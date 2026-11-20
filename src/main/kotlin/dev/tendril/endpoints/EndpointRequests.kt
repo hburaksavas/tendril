@@ -36,7 +36,20 @@ object EndpointRequests {
         if (body != null) append("Content-Type: application/json\n\n").append(body).append('\n')
     }
 
-    private fun verb(e: Endpoint) = if (e.httpMethod == "ANY") "GET" else e.httpMethod
+    private fun verb(e: Endpoint) = verbOf(e.httpMethod)
+
+    internal fun verbOf(httpMethod: String) = if (httpMethod == "ANY") "GET" else httpMethod
+
+    /** `{id}` / `{id:regex}` -> `{{id}}` for the HTTP client. */
+    internal fun httpPath(path: String): String =
+        Regex("\\{([^}/]+)}").replace(path) { "{{${it.groupValues[1].substringBefore(':')}}}" }
+
+    /** Opens [text] as a scratch `.http` file. */
+    internal fun openHttpScratch(project: Project, fileName: String, text: String) {
+        val file = com.intellij.ide.scratch.ScratchRootType.getInstance()
+            .createScratchFile(project, fileName, null, text) ?: return
+        com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).openFile(file, true)
+    }
 
     /** http://localhost:<server.port or 8080><server.servlet.context-path>, read from the project's config files. */
     fun baseUrl(project: Project): String {
@@ -54,8 +67,10 @@ object EndpointRequests {
             }
         }
 
-    private fun query(e: Endpoint): String {
-        val method = e.method.element ?: return ""
+    private fun query(e: Endpoint): String = queryOf(e.method.element)
+
+    internal fun queryOf(method: PsiMethod?): String {
+        method ?: return ""
         val names = method.parameterList.parameters.mapNotNull { p ->
             val ann = p.getAnnotation(REQUEST_PARAM) ?: return@mapNotNull null
             com.intellij.codeInsight.AnnotationUtil.getStringAttributeValue(ann, "value")
@@ -65,8 +80,10 @@ object EndpointRequests {
         return if (names.isEmpty()) "" else names.joinToString("&", prefix = "?") { "$it=value" }
     }
 
-    private fun body(e: Endpoint): String? {
-        val param = e.method.element?.parameterList?.parameters?.firstOrNull { it.getAnnotation(REQUEST_BODY) != null }
+    private fun body(e: Endpoint): String? = bodyOf(e.method.element)
+
+    internal fun bodyOf(method: PsiMethod?): String? {
+        val param = method?.parameterList?.parameters?.firstOrNull { it.getAnnotation(REQUEST_BODY) != null }
             ?: return null
         return skeleton(param.type, 0, 0)
     }

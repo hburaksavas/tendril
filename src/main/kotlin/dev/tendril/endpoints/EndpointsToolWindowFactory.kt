@@ -180,6 +180,10 @@ private class EndpointsPanel(private val project: Project) : JPanel(BorderLayout
             action("Go to Source") { navigate() },
             action("Copy URL") { copy("URL", ReadAction.compute<String, Throwable> { EndpointRequests.url(project, it) }) },
             action("Copy as cURL") { copy("cURL command", ReadAction.compute<String, Throwable> { EndpointRequests.curl(project, it) }) },
+            action("Send Request…") {
+                val text = ReadAction.compute<String, Throwable> { EndpointRequests.http(project, it) }
+                dev.tendril.http.HttpToolWindowFactory.open(project, text)
+            },
             action("Open as .http Request") { openHttpScratch(it) },
         )
     }

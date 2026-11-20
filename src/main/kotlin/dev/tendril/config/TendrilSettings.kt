@@ -10,6 +10,9 @@ class TendrilSettings : PersistentStateComponent<TendrilSettings.State> {
 
     class State {
         var ignoredKeys: MutableList<String> = mutableListOf()
+
+        /** Feign service name -> base URL, for clients that only declare a name (resolved by discovery at runtime). */
+        var serviceUrls: MutableMap<String, String> = mutableMapOf()
     }
 
     private var state = State()

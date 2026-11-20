@@ -68,7 +68,7 @@ object EndpointScanner {
         return out.sortedWith(compareBy({ it.path }, { it.httpMethod }))
     }
 
-    private fun mappingsOf(m: PsiMethod): List<Pair<List<String>, List<String>>> {
+    internal fun mappingsOf(m: PsiMethod): List<Pair<List<String>, List<String>>> {
         val res = mutableListOf<Pair<List<String>, List<String>>>()
         for ((fqn, verb) in SHORTCUTS) {
             m.getAnnotation(fqn)?.let { res += listOf(verb) to paths(it) }
@@ -84,7 +84,7 @@ object EndpointScanner {
         attrValues(ann, "value").ifEmpty { attrValues(ann, "path") }
 
     /** Evaluates constant strings; for non-string values (enums) falls back to source text. */
-    private fun attrValues(ann: PsiAnnotation, name: String): List<String> {
+    internal fun attrValues(ann: PsiAnnotation, name: String): List<String> {
         val value = ann.findDeclaredAttributeValue(name) ?: return emptyList()
         val helper = JavaPsiFacade.getInstance(ann.project).constantEvaluationHelper
         val items = if (value is PsiArrayInitializerMemberValue) value.initializers.toList() else listOf(value)
@@ -93,7 +93,7 @@ object EndpointScanner {
         }
     }
 
-    private fun join(a: String, b: String): String {
+    internal fun join(a: String, b: String): String {
         val s = ("/" + a.trim('/') + "/" + b.trim('/')).replace(Regex("/+"), "/")
         return if (s.length > 1) s.trimEnd('/') else s
     }

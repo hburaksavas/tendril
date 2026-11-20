@@ -66,6 +66,12 @@
                     factoryClass="dev.tendril.beans.BeansToolWindowFactory"/>
         <toolWindow id="Spring Endpoints" anchor="right" icon="AllIcons.Nodes.Services"
                     factoryClass="dev.tendril.endpoints.EndpointsToolWindowFactory"/>
+        <codeInsight.lineMarkerProvider language="JAVA"
+                                        implementationClass="dev.tendril.feign.FeignLineMarkerProvider"/>
+        <toolWindow id="HTTP Requests" anchor="bottom" icon="AllIcons.Actions.Execute"
+                    factoryClass="dev.tendril.http.HttpToolWindowFactory"/>
+        <toolWindow id="Feign Clients" anchor="right" icon="AllIcons.Nodes.Interface"
+                    factoryClass="dev.tendril.feign.FeignToolWindowFactory"/>
         <toolWindow id="Spring Actuator" anchor="right" icon="AllIcons.Actions.Execute"
                     factoryClass="dev.tendril.actuator.ActuatorToolWindowFactory"/>
     </extensions>

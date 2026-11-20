@@ -88,6 +88,9 @@ object ConfigNavigation {
     fun allConfigElements(project: Project, key: String): List<PsiElement> =
         keyIndex(project)[MetadataIndex.normalize(key)].orEmpty()
 
+    /** Every config-file key (relaxed-normalized) with its elements, across all modules. */
+    fun allEntries(project: Project): Map<String, List<PsiElement>> = keyIndex(project)
+
     /** Keeps targets inside [allowed] modules, same module first; falls back to everything if none qualify. */
     private fun prioritize(all: List<PsiElement>, origin: Module, allowed: Set<Module>): List<PsiElement> {
         val scoped = all.filter { ModuleUtilCore.findModuleForPsiElement(it)?.let { m -> m in allowed } == true }

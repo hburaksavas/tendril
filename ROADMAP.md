@@ -35,6 +35,14 @@ Target: IntelliJ IDEA 2025.3+ (unified distribution). Stack: Kotlin, IntelliJ Pl
 - [x] Actuator: Loggers tab (change log level of the running app, reset to inherited)
 - [x] Actuator: Conditions tab (auto-configuration positive/negative matches)
 
+## Phase 6 — Outgoing calls (Feign)
+- [x] Feign Clients tool window: resolved address per client for a chosen profile (`url` placeholders, then name-based lookup)
+- [x] Name-only clients: address table in settings, well-known config keys, config-key guessing
+- [x] Copy URL / cURL / open as `.http` request, gutter icon on Feign methods
+- [x] Generate `http-client.env.json` (address per profile) plus a private token file
+- [x] Built-in HTTP client ("HTTP Requests" tool window): `.http` syntax, `@var = value` and env-file variables, send and read the response, no paid IDE feature needed
+- [ ] Settings page for the service-address table and name key templates
+
 ## Quality (alongside every phase)
 - [ ] Automated tests (light fixture tests for completion, inspections, markers)
 - [ ] Settings page for the ignore list
