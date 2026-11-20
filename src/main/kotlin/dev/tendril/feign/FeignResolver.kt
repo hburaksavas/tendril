@@ -85,6 +85,20 @@ object FeignResolver {
             if (unresolved.isEmpty() && first.isNotEmpty()) return FeignResolution(withScheme(first), "config key $key")
         }
 
+        // SimpleDiscoveryClient's host/port/secure form (instead of a single uri)
+        val instance = "spring.cloud.discovery.client.simple.instances.$name[0]"
+        fun part(suffix: String): String? =
+            valueFor(ConfigNavigation.allConfigElements(project, "$instance.$suffix"), profile)
+                ?.let { substitute(project, it, profile) }?.takeIf { it.second.isEmpty() }?.first
+        part("host")?.let { host ->
+            val secure = part("secure")?.toBooleanStrictOrNull() == true
+            val port = part("port")?.takeIf { p -> p.all(Char::isDigit) }
+            return FeignResolution(
+                "${if (secure) "https" else "http"}://$host" + (port?.let { ":$it" } ?: ""),
+                "config key $instance.host/port",
+            )
+        }
+
         // Last resort: any key that mentions the service and holds an http(s) address.
         val needle = name.lowercase().filter { it.isLetterOrDigit() }
         if (needle.length >= 3) {
