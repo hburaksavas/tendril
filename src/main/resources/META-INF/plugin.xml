@@ -56,6 +56,8 @@
         <localInspection language="JAVA" groupName="Tendril" enabledByDefault="true" level="WARNING"
                          shortName="TendrilCircularDependency" displayName="Circular bean dependency"
                          implementationClass="dev.tendril.beans.CircularDependencyInspection"/>
+        <searchEverywhereContributor implementation="dev.tendril.endpoints.EndpointSearchContributorFactory"/>
+        <notificationGroup id="Tendril" displayType="BALLOON"/>
         <toolWindow id="Spring Beans" anchor="right" icon="AllIcons.Nodes.Class"
                     factoryClass="dev.tendril.beans.BeansToolWindowFactory"/>
         <toolWindow id="Spring Endpoints" anchor="right" icon="AllIcons.Nodes.Services"

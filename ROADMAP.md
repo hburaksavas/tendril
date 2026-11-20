@@ -23,9 +23,9 @@ Target: IntelliJ IDEA 2025.3+ (unified distribution). Stack: Kotlin, IntelliJ Pl
 - [x] Circular bean-dependency detection (constructor and field injection, `@Lazy` breaks the cycle)
 
 ## Phase 3 — Endpoint explorer
-- [ ] HTTP-method colours, copy URL, group by controller
-- [ ] "Go to Endpoint" in Search Everywhere
-- [ ] Generate a `.http` request file for the selected endpoint
+- [x] HTTP-method colours, copy URL / cURL, group by controller, focus mode (only the active editor's endpoints)
+- [x] "Go to Endpoint" in Search Everywhere (Endpoints tab)
+- [x] Generate a `.http` request (scratch file) for the selected endpoint
 
 ## Phase 4 — Running application (Actuator)
 - [ ] Tool window reading `/actuator/beans`, `/mappings`, `/env`, `/health` of a running app

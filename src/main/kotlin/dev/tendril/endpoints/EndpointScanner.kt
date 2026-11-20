@@ -1,14 +1,19 @@
 package dev.tendril.endpoints
 
+import com.intellij.lang.java.JavaLanguage
 import com.intellij.openapi.project.Project
 import com.intellij.psi.*
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.search.searches.AnnotatedElementsSearch
+import com.intellij.psi.util.CachedValueProvider
+import com.intellij.psi.util.CachedValuesManager
+import com.intellij.psi.util.PsiModificationTracker
 
 data class Endpoint(
     val httpMethod: String,
     val path: String,
     val className: String,
+    val methodName: String,
     val method: SmartPsiElementPointer<PsiMethod>,
 )
 
@@ -27,6 +32,15 @@ object EndpointScanner {
         PKG + "PatchMapping" to "PATCH",
     )
 
+    /** Cached per project, rebuilt when Java code changes. Must be called inside a read action. */
+    fun cached(project: Project): List<Endpoint> =
+        CachedValuesManager.getManager(project).getCachedValue(project) {
+            CachedValueProvider.Result.create(
+                scan(project),
+                PsiModificationTracker.getInstance(project).forLanguage(JavaLanguage.INSTANCE),
+            )
+        }
+
     /** Must be called inside a read action. */
     fun scan(project: Project): List<Endpoint> {
         val facade = JavaPsiFacade.getInstance(project)
@@ -44,7 +58,7 @@ object EndpointScanner {
                 for ((verbs, subPaths) in mappingsOf(m)) {
                     for (base in basePaths) for (sub in subPaths.ifEmpty { listOf("") }) for (verb in verbs) {
                         out += Endpoint(
-                            verb, join(base, sub), cls.name ?: "?",
+                            verb, join(base, sub), cls.name ?: "?", m.name,
                             pointers.createSmartPsiElementPointer(m),
                         )
                     }
