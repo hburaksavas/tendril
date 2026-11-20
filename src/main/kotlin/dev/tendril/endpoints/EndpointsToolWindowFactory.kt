@@ -17,17 +17,24 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
+import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.pom.Navigatable
 import com.intellij.ui.*
 import com.intellij.ui.components.JBScrollPane
+import com.intellij.ui.components.JBTabbedPane
 import com.intellij.ui.content.ContentFactory
 import com.intellij.ui.treeStructure.Tree
 import com.intellij.util.concurrency.AppExecutorUtil
+import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.tree.TreeUtil
+import dev.tendril.feign.FeignPanel
+import dev.tendril.http.HttpRequestPanel
+import dev.tendril.http.RequestHost
 import java.awt.BorderLayout
 import java.awt.datatransfer.StringSelection
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
+import javax.swing.Icon
 import javax.swing.JPanel
 import javax.swing.JTree
 import javax.swing.event.DocumentEvent
@@ -35,27 +42,110 @@ import javax.swing.event.DocumentListener
 import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.DefaultTreeModel
 
+/**
+ * One window for HTTP: the endpoints this application serves (Incoming), the Feign clients it calls (Outgoing),
+ * and a request section at the bottom that opens when you send a request from either tab.
+ */
 class EndpointsToolWindowFactory : ToolWindowFactory, DumbAware {
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
-        val panel = EndpointsPanel(project)
-        Disposer.register(toolWindow.disposable, panel)
-        toolWindow.contentManager.addContent(ContentFactory.getInstance().createContent(panel, "", false))
-        toolWindow.setTitleActions(
-            listOf(
-                object : AnAction("Refresh", null, AllIcons.Actions.Refresh) {
-                    override fun actionPerformed(e: AnActionEvent) = panel.refresh()
-                },
-                panel.toggle("Group by Controller", AllIcons.Actions.GroupBy, panel::grouped) { panel.grouped = it },
-                panel.toggle(
-                    "Focus Mode: Only the Active Editor's Endpoints", AllIcons.General.Locate, panel::focusMode,
-                ) { panel.focusMode = it },
-            ),
-        )
-        panel.refresh()
+        val root = ApiRootPanel(project)
+        Disposer.register(toolWindow.disposable, root)
+        toolWindow.contentManager.addContent(ContentFactory.getInstance().createContent(root, "", false))
+        root.refresh()
+    }
+
+    companion object {
+        const val ID = "Spring Endpoints"
+
+        /** Shows the window and opens [text] in its request section; [outgoing] also switches to the Outgoing tab. */
+        fun sendRequest(project: Project, text: String, outgoing: Boolean) {
+            val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(ID) ?: return
+            toolWindow.activate {
+                val root = toolWindow.contentManager.contents.firstOrNull()?.component as? ApiRootPanel ?: return@activate
+                if (outgoing) root.showOutgoing()
+                root.sendRequest(text)
+            }
+        }
+
+        /** Runs [block], a request taken from a `.http` file ([fileText]), and shows the response in the bottom section. */
+        fun runRequest(project: Project, block: String, fileText: String) {
+            val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(ID) ?: return
+            toolWindow.activate {
+                val root = toolWindow.contentManager.contents.firstOrNull()?.component as? ApiRootPanel ?: return@activate
+                root.runRequest(block, fileText)
+            }
+        }
     }
 }
 
-private class EndpointsPanel(private val project: Project) : JPanel(BorderLayout()), Disposable {
+internal class ApiRootPanel(project: Project) : JPanel(BorderLayout()), Disposable, RequestHost {
+    private val tabs = JBTabbedPane()
+    private val incoming = EndpointsPanel(project, this) { tabs.setTitleAt(0, "Incoming  $it") }
+    private val outgoing = FeignPanel(project, this) { tabs.setTitleAt(1, "Outgoing  $it") }
+    private val request = HttpRequestPanel(project) { hideRequest() }
+    private val splitter = OnePixelSplitter(true, "tendril.api.splitter", 0.55f)
+
+    init {
+        tabs.addTab("Incoming", incoming)
+        tabs.addTab("Outgoing", outgoing)
+        splitter.firstComponent = tabs
+        add(splitter, BorderLayout.CENTER)
+        Disposer.register(this, incoming)
+        Disposer.register(this, outgoing)
+    }
+
+    override fun dispose() {}
+
+    fun refresh() {
+        incoming.refresh()
+        outgoing.refresh()
+    }
+
+    fun showOutgoing() {
+        tabs.selectedComponent = outgoing
+    }
+
+    override fun sendRequest(text: String) {
+        request.setRequest(text)
+        splitter.secondComponent = request
+        revalidate()
+        repaint()
+    }
+
+    fun runRequest(block: String, fileText: String) {
+        splitter.secondComponent = request
+        revalidate()
+        repaint()
+        request.runBlock(block, fileText)
+    }
+
+    private fun hideRequest() {
+        splitter.secondComponent = null
+        revalidate()
+        repaint()
+    }
+}
+
+/** A toolbar for a panel's own actions, laid out in the panel's top row. */
+internal fun toolbarOf(place: String, target: JPanel, vararg actions: AnAction): javax.swing.JComponent {
+    val toolbar = ActionManager.getInstance().createActionToolbar(place, DefaultActionGroup(*actions), true)
+    toolbar.targetComponent = target
+    toolbar.component.border = JBUI.Borders.empty()
+    return toolbar.component
+}
+
+internal fun toggleAction(text: String, icon: Icon, get: () -> Boolean, set: (Boolean) -> Unit): AnAction =
+    object : ToggleAction(text, null, icon), DumbAware {
+        override fun isSelected(e: AnActionEvent) = get()
+        override fun setSelected(e: AnActionEvent, state: Boolean) = set(state)
+        override fun getActionUpdateThread() = ActionUpdateThread.EDT
+    }
+
+internal class EndpointsPanel(
+    private val project: Project,
+    private val host: RequestHost,
+    private val onCount: (Int) -> Unit,
+) : JPanel(BorderLayout()), Disposable {
     private val root = DefaultMutableTreeNode()
     private val treeModel = DefaultTreeModel(root)
     private val tree = Tree(treeModel)
@@ -93,7 +183,23 @@ private class EndpointsPanel(private val project: Project) : JPanel(BorderLayout
             override fun removeUpdate(e: DocumentEvent) = applyFilter()
             override fun changedUpdate(e: DocumentEvent) = applyFilter()
         })
-        add(search, BorderLayout.NORTH)
+
+        val top = JPanel(BorderLayout()).apply {
+            border = JBUI.Borders.empty(2, 4)
+            add(
+                toolbarOf(
+                    "TendrilEndpoints", this@EndpointsPanel,
+                    object : AnAction("Refresh", "Scan the project again", AllIcons.Actions.Refresh), DumbAware {
+                        override fun actionPerformed(e: AnActionEvent) = refresh()
+                    },
+                    toggleAction("Group by Controller", AllIcons.Actions.GroupBy, { grouped }) { grouped = it },
+                    toggleAction("Only the Active Editor's Endpoints", AllIcons.General.Locate, { focusMode }) { focusMode = it },
+                ),
+                BorderLayout.WEST,
+            )
+            add(search, BorderLayout.CENTER)
+        }
+        add(top, BorderLayout.NORTH)
         add(JBScrollPane(tree), BorderLayout.CENTER)
 
         project.messageBus.connect(this).subscribe(
@@ -108,19 +214,13 @@ private class EndpointsPanel(private val project: Project) : JPanel(BorderLayout
 
     override fun dispose() {}
 
-    fun toggle(text: String, icon: javax.swing.Icon, get: () -> Boolean, set: (Boolean) -> Unit): AnAction =
-        object : ToggleAction(text, null, icon), DumbAware {
-            override fun isSelected(e: AnActionEvent) = get()
-            override fun setSelected(e: AnActionEvent, state: Boolean) = set(state)
-            override fun getActionUpdateThread() = ActionUpdateThread.EDT
-        }
-
     fun refresh() {
         ReadAction.nonBlocking<List<Endpoint>> { EndpointScanner.cached(project) }
             .inSmartMode(project)
             .expireWith(this)
             .finishOnUiThread(ModalityState.any()) {
                 all = it
+                onCount(it.size)
                 applyFilter()
             }
             .submit(AppExecutorUtil.getAppExecutorService())
@@ -135,11 +235,12 @@ private class EndpointsPanel(private val project: Project) : JPanel(BorderLayout
                 (!focusMode || (activeFile != null && e.method.virtualFile == activeFile))
         }
 
-        tree.emptyText.text = when {
-            all.isEmpty() -> "No Spring endpoints found"
-            focusMode && activeFile == null -> "Focus mode: no editor is open"
-            focusMode && shown.isEmpty() -> "Focus mode: no endpoints in ${activeFile?.name}"
-            else -> "Nothing matches"
+        val empty = tree.emptyText
+        when {
+            all.isEmpty() -> empty.setText("No endpoints found").appendLine("Classes annotated with @RestController or @Controller are listed here.")
+            focusMode && activeFile == null -> empty.setText("No editor is open").appendLine("Open a controller to see its endpoints.")
+            focusMode && shown.isEmpty() -> empty.setText("No endpoints in ${activeFile?.name}").appendLine("Turn off focus mode to see all endpoints.")
+            else -> empty.setText("Nothing matches \"${search.text.trim()}\"")
         }
 
         root.removeAllChildren()
@@ -177,14 +278,14 @@ private class EndpointsPanel(private val project: Project) : JPanel(BorderLayout
             override fun getActionUpdateThread() = ActionUpdateThread.EDT
         }
         return DefaultActionGroup(
+            action("Send Request") {
+                host.sendRequest(ReadAction.compute<String, Throwable> { EndpointRequests.http(project, it) })
+            },
+            Separator.create(),
             action("Go to Source") { navigate() },
             action("Copy URL") { copy("URL", ReadAction.compute<String, Throwable> { EndpointRequests.url(project, it) }) },
             action("Copy as cURL") { copy("cURL command", ReadAction.compute<String, Throwable> { EndpointRequests.curl(project, it) }) },
-            action("Send Request…") {
-                val text = ReadAction.compute<String, Throwable> { EndpointRequests.http(project, it) }
-                dev.tendril.http.HttpToolWindowFactory.open(project, text)
-            },
-            action("Open as .http Request") { openHttpScratch(it) },
+            action("Open as .http File") { openHttpScratch(it) },
         )
     }
 
@@ -197,9 +298,7 @@ private class EndpointsPanel(private val project: Project) : JPanel(BorderLayout
     private fun openHttpScratch(endpoint: Endpoint) {
         val text = ReadAction.compute<String, Throwable> { EndpointRequests.http(project, endpoint) }
         val fileName = "${endpoint.httpMethod}_${endpoint.path.trim('/').replace(Regex("[^A-Za-z0-9]+"), "_")}.http"
-        val file = com.intellij.ide.scratch.ScratchRootType.getInstance()
-            .createScratchFile(project, fileName, null, text) ?: return
-        FileEditorManager.getInstance(project).openFile(file, true)
+        EndpointRequests.openHttpScratch(project, fileName, text)
     }
 
     private companion object {

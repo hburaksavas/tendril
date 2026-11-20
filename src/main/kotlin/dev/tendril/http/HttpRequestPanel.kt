@@ -1,23 +1,18 @@
 package dev.tendril.http
 
 import com.intellij.icons.AllIcons
-import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
-import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.ComboBox
-import com.intellij.openapi.util.Disposer
-import com.intellij.openapi.wm.ToolWindow
-import com.intellij.openapi.wm.ToolWindowFactory
-import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.ui.JBColor
-import com.intellij.ui.JBSplitter
+import com.intellij.ui.SimpleTextAttributes
+import com.intellij.ui.SimpleColoredComponent
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTabbedPane
 import com.intellij.ui.components.JBTextArea
-import com.intellij.ui.content.ContentFactory
+import com.intellij.util.ui.JBUI
 import java.awt.BorderLayout
 import java.awt.FlowLayout
 import java.awt.Font
@@ -27,39 +22,28 @@ import javax.swing.JButton
 import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.KeyStroke
+import com.intellij.ui.OnePixelSplitter
 
-/** A built-in HTTP client: edit a request in `.http` syntax, pick an environment, send it, read the response. */
-class HttpToolWindowFactory : ToolWindowFactory, DumbAware {
-    override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
-        val panel = HttpPanel(project)
-        Disposer.register(toolWindow.disposable, panel)
-        toolWindow.contentManager.addContent(ContentFactory.getInstance().createContent(panel, "", false))
-    }
-
-    companion object {
-        const val ID = "HTTP Requests"
-
-        /** Shows the tool window with [text] as the request. */
-        fun open(project: Project, text: String) {
-            val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(ID) ?: return
-            toolWindow.activate {
-                (toolWindow.contentManager.contents.firstOrNull()?.component as? HttpPanel)?.setRequest(text)
-            }
-        }
-    }
+/** Something that can show a request in the HTTP section of the endpoints window. */
+internal interface RequestHost {
+    fun sendRequest(text: String)
 }
 
-private class HttpPanel(private val project: Project) : JPanel(BorderLayout()), Disposable {
-    private val request = JBTextArea(12, 60)
+/**
+ * The request section at the bottom of the endpoints window: a `.http`-style editor on top, the response below.
+ * Ctrl+Enter sends the request under the caret.
+ */
+internal class HttpRequestPanel(private val project: Project, private val onClose: () -> Unit) : JPanel(BorderLayout()) {
+    private val request = JBTextArea(8, 60)
     private val environments = ComboBox<String>()
     private val send = JButton("Send", AllIcons.Actions.Execute)
-    private val status = JBLabel(" ")
+    private val status = SimpleColoredComponent()
     private val body = readOnlyArea()
     private val headers = readOnlyArea()
 
     init {
         request.font = Font(Font.MONOSPACED, Font.PLAIN, 13)
-        request.text = "### Example\nGET http://localhost:8080/actuator/health\n"
+        request.margin = JBUI.insets(4, 6)
         request.registerKeyboardAction(
             { send() }, KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, InputEvent.CTRL_DOWN_MASK), JComponent.WHEN_FOCUSED,
         )
@@ -67,35 +51,52 @@ private class HttpPanel(private val project: Project) : JPanel(BorderLayout()), 
         send.addActionListener { send() }
         reloadEnvironments()
 
-        val bar = JPanel(FlowLayout(FlowLayout.LEFT, 6, 4))
-        bar.add(send)
-        bar.add(JBLabel("Environment:"))
-        bar.add(environments)
-        bar.add(JBLabel("<html><small>Variables: <code>@name = value</code> lines or http-client.env.json</small></html>"))
+        val close = JButton(AllIcons.Actions.Close).apply {
+            toolTipText = "Hide the request section"
+            isBorderPainted = false
+            isContentAreaFilled = false
+            isFocusable = false
+            addActionListener { onClose() }
+        }
+        val left = JPanel(FlowLayout(FlowLayout.LEFT, 6, 0)).apply {
+            isOpaque = false
+            add(JBLabel("Request").apply { font = font.deriveFont(Font.BOLD) })
+            add(JBLabel("Environment").apply { foreground = JBColor.GRAY })
+            add(environments)
+        }
+        val right = JPanel(FlowLayout(FlowLayout.RIGHT, 6, 0)).apply {
+            isOpaque = false
+            add(send)
+            add(close)
+        }
+        val header = JPanel(BorderLayout()).apply {
+            border = JBUI.Borders.empty(3, 8)
+            add(left, BorderLayout.WEST)
+            add(right, BorderLayout.EAST)
+        }
 
         val tabs = JBTabbedPane()
         tabs.addTab("Body", JBScrollPane(body))
         tabs.addTab("Headers", JBScrollPane(headers))
-        val response = JPanel(BorderLayout())
-        response.add(status, BorderLayout.NORTH)
-        response.add(tabs, BorderLayout.CENTER)
+        val response = JPanel(BorderLayout()).apply {
+            add(status.apply { border = JBUI.Borders.empty(4, 8) }, BorderLayout.NORTH)
+            add(tabs, BorderLayout.CENTER)
+        }
 
-        val splitter = JBSplitter(true, 0.4f)
+        val splitter = OnePixelSplitter(true, "tendril.http.splitter", 0.4f)
         splitter.firstComponent = JBScrollPane(request)
         splitter.secondComponent = response
-        add(bar, BorderLayout.NORTH)
+        add(header, BorderLayout.NORTH)
         add(splitter, BorderLayout.CENTER)
+        showHint("Write a request, then press Ctrl+Enter. Use @name = value lines or http-client.env.json for {{variables}}.")
     }
-
-    override fun dispose() {}
 
     /** Puts [text] into the editor; variables nobody defines get an empty `@name = ` line to fill in. */
     fun setRequest(text: String) {
         reloadEnvironments()
         val known = selectedVariables().keys + HttpRequestText.fileVariables(text).keys
         val missing = HttpRequestText.variables(text).filter { it !in known }
-        val prefix = missing.joinToString("") { "@$it = \n" }
-        request.text = prefix + text
+        request.text = missing.joinToString("") { "@$it = \n" } + text
         runCatching { request.caretPosition = request.getLineStartOffset(missing.size) }
         request.requestFocusInWindow()
     }
@@ -119,29 +120,44 @@ private class HttpPanel(private val project: Project) : JPanel(BorderLayout()), 
         val line = runCatching { request.getLineOfOffset(request.caretPosition) }.getOrDefault(0)
         val variables = selectedVariables() + HttpRequestText.fileVariables(text)
         val parsed = HttpRequestText.parse(HttpRequestText.block(text, line), variables).getOrElse {
-            showError(it.message ?: "Invalid request")
+            showError(it.message ?: "The request could not be read")
             return
         }
+        execute(parsed)
+    }
 
+    /** Runs a request taken from an editor file; variables come from the environment and the file's `@name = value` lines. */
+    fun runBlock(block: String, fileText: String) {
+        reloadEnvironments()
+        val variables = selectedVariables() + HttpRequestText.fileVariables(fileText)
+        val parsed = HttpRequestText.parse(block, variables).getOrElse {
+            showError(it.message ?: "The request could not be read")
+            return
+        }
+        execute(parsed)
+    }
+
+    private fun execute(parsed: ParsedRequest) {
         send.isEnabled = false
-        status.foreground = JBColor.GRAY
-        status.text = "Sending ${parsed.method} ${parsed.url} …"
+        showHint("Sending ${parsed.method} ${parsed.url}")
         ApplicationManager.getApplication().executeOnPooledThread {
             val result = runCatching { HttpExecutor.send(parsed) }
             ApplicationManager.getApplication().invokeLater({
                 send.isEnabled = true
-                result.fold({ show(it) }, { showError("Request failed: ${it.message ?: it.javaClass.simpleName}") })
+                result.fold({ show(it) }, { showError("The request failed: ${it.message ?: it.javaClass.simpleName}") })
             }, ModalityState.any())
         }
     }
 
     private fun show(r: HttpResult) {
-        status.foreground = when (r.status) {
+        val color = when (r.status) {
             in 200..299 -> JBColor(0x2E7D32, 0x6AAB73)
             in 300..399 -> JBColor(0xB26A00, 0xE0A44D)
             else -> JBColor(0xC62828, 0xF28B82)
         }
-        status.text = "${r.status} ${HttpExecutor.reason(r.status)}  ·  ${r.millis} ms  ·  ${size(r.bytes)}"
+        status.clear()
+        status.append("${r.status} ${HttpExecutor.reason(r.status)}".trim(), SimpleTextAttributes(SimpleTextAttributes.STYLE_BOLD, color))
+        status.append("   ${r.millis} ms   ${size(r.bytes)}", SimpleTextAttributes.GRAYED_ATTRIBUTES)
         body.text = HttpExecutor.pretty(r.body).take(MAX_BODY)
         body.caretPosition = 0
         headers.text = r.headers.joinToString("\n") { "${it.first}: ${it.second}" }
@@ -149,10 +165,15 @@ private class HttpPanel(private val project: Project) : JPanel(BorderLayout()), 
     }
 
     private fun showError(message: String) {
-        status.foreground = JBColor(0xC62828, 0xF28B82)
-        status.text = message
+        status.clear()
+        status.append(message, SimpleTextAttributes.ERROR_ATTRIBUTES)
         body.text = ""
         headers.text = ""
+    }
+
+    private fun showHint(message: String) {
+        status.clear()
+        status.append(message, SimpleTextAttributes.GRAYED_ATTRIBUTES)
     }
 
     private fun size(bytes: Int) = if (bytes < 1024) "$bytes B" else "%.1f KB".format(bytes / 1024.0)
@@ -160,6 +181,7 @@ private class HttpPanel(private val project: Project) : JPanel(BorderLayout()), 
     private fun readOnlyArea() = JBTextArea().apply {
         isEditable = false
         font = Font(Font.MONOSPACED, Font.PLAIN, 13)
+        margin = JBUI.insets(4, 6)
     }
 
     private companion object {

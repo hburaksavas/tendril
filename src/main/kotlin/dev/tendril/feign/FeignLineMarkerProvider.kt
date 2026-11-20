@@ -8,7 +8,6 @@ import com.intellij.openapi.editor.markup.GutterIconRenderer
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiIdentifier
 import com.intellij.psi.PsiMethod
-import dev.tendril.endpoints.EndpointRequests
 
 /** On a mapped method of a `@FeignClient` interface: opens the call as an `.http` request for the chosen profile. */
 class FeignLineMarkerProvider : LineMarkerProviderDescriptor() {
@@ -30,12 +29,12 @@ class FeignLineMarkerProvider : LineMarkerProviderDescriptor() {
             val d = FeignScanner.defOf(owner) ?: return@GutterIconNavigationHandler
             val info = FeignResolver.resolve(project, d, FeignResolver.selectedProfile(project))
             val call = d.calls.firstOrNull { it.method.element == m } ?: return@GutterIconNavigationHandler
-            dev.tendril.http.HttpToolWindowFactory.open(project, FeignRequests.http(info, call))
+            dev.tendril.endpoints.EndpointsToolWindowFactory.sendRequest(project, FeignRequests.http(info, call), outgoing = true)
         }
         return LineMarkerInfo(
             element, element.textRange, AllIcons.Actions.Execute,
-            { "Send this Feign call (Tendril HTTP)" }, handler, GutterIconRenderer.Alignment.LEFT,
-            { "Send Feign call in Tendril HTTP" },
+            { "Send this Feign call" }, handler, GutterIconRenderer.Alignment.LEFT,
+            { "Send this Feign call" },
         )
     }
 }

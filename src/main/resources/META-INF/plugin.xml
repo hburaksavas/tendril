@@ -61,6 +61,13 @@
                          shortName="TendrilCircularDependency" displayName="Circular bean dependency"
                          implementationClass="dev.tendril.beans.CircularDependencyInspection"/>
         <searchEverywhereContributor implementation="dev.tendril.endpoints.EndpointSearchContributorFactory"/>
+        <fileType name="Tendril HTTP" implementationClass="dev.tendril.http.HttpFileType" fieldName="INSTANCE"
+                  language="TendrilHttp" extensions="http;rest"/>
+        <lang.parserDefinition language="TendrilHttp" implementationClass="dev.tendril.http.HttpParserDefinition"/>
+        <lang.syntaxHighlighterFactory language="TendrilHttp"
+                                       implementationClass="dev.tendril.http.HttpSyntaxHighlighterFactory"/>
+        <codeInsight.lineMarkerProvider language="TendrilHttp"
+                                        implementationClass="dev.tendril.http.HttpLineMarkerProvider"/>
         <notificationGroup id="Tendril" displayType="BALLOON"/>
         <toolWindow id="Spring Beans" anchor="right" icon="AllIcons.Nodes.Class"
                     factoryClass="dev.tendril.beans.BeansToolWindowFactory"/>
@@ -68,11 +75,15 @@
                     factoryClass="dev.tendril.endpoints.EndpointsToolWindowFactory"/>
         <codeInsight.lineMarkerProvider language="JAVA"
                                         implementationClass="dev.tendril.feign.FeignLineMarkerProvider"/>
-        <toolWindow id="HTTP Requests" anchor="bottom" icon="AllIcons.Actions.Execute"
-                    factoryClass="dev.tendril.http.HttpToolWindowFactory"/>
-        <toolWindow id="Feign Clients" anchor="right" icon="AllIcons.Nodes.Interface"
-                    factoryClass="dev.tendril.feign.FeignToolWindowFactory"/>
         <toolWindow id="Spring Actuator" anchor="right" icon="AllIcons.Actions.Execute"
                     factoryClass="dev.tendril.actuator.ActuatorToolWindowFactory"/>
     </extensions>
+
+    <actions>
+        <action id="Tendril.SendHttpRequest" class="dev.tendril.http.SendHttpRequestAction"
+                text="Send HTTP Request" description="Send the request under the caret in a .http file">
+            <keyboard-shortcut keymap="$default" first-keystroke="ctrl ENTER"/>
+            <add-to-group group-id="EditorPopupMenu" anchor="first"/>
+        </action>
+    </actions>
 </idea-plugin>

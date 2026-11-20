@@ -14,22 +14,22 @@ import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.ui.Messages
-import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.LocalFileSystem
-import com.intellij.openapi.wm.ToolWindow
-import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.pom.Navigatable
 import com.intellij.ui.*
 import com.intellij.ui.components.JBScrollPane
-import com.intellij.ui.content.ContentFactory
 import com.intellij.ui.treeStructure.Tree
 import com.intellij.util.concurrency.AppExecutorUtil
+import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.tree.TreeUtil
 import dev.tendril.config.ConfigProfiles
 import dev.tendril.config.TendrilSettings
 import dev.tendril.endpoints.EndpointRequests
 import dev.tendril.endpoints.HttpMethodColors
+import dev.tendril.endpoints.toolbarOf
+import dev.tendril.http.RequestHost
 import java.awt.BorderLayout
+import java.awt.FlowLayout
 import java.awt.datatransfer.StringSelection
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
@@ -42,34 +42,15 @@ import javax.swing.event.DocumentListener
 import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.DefaultTreeModel
 
-/** Outgoing calls: every `@FeignClient` with the address it resolves to for the chosen profile. */
-class FeignToolWindowFactory : ToolWindowFactory, DumbAware {
-    override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
-        val panel = FeignPanel(project)
-        Disposer.register(toolWindow.disposable, panel)
-        toolWindow.contentManager.addContent(ContentFactory.getInstance().createContent(panel, "", false))
-        toolWindow.setTitleActions(
-            listOf(
-                object : AnAction("Refresh", null, AllIcons.Actions.Refresh) {
-                    override fun actionPerformed(e: AnActionEvent) = panel.refresh()
-                },
-                object : AnAction(
-                    "Generate http-client.env.json",
-                    "Write the resolved address of every client, per profile, to an HTTP Client environment file",
-                    AllIcons.Actions.MenuSaveall,
-                ) {
-                    override fun actionPerformed(e: AnActionEvent) = panel.generateEnvFile()
-                },
-            ),
-        )
-        panel.refresh()
-    }
-}
-
 private class ClientNode(val info: FeignClientInfo)
 private class CallNode(val info: FeignClientInfo, val call: FeignCall)
 
-private class FeignPanel(private val project: Project) : JPanel(BorderLayout()), Disposable {
+/** Outgoing calls: every `@FeignClient` with the address it resolves to for the chosen profile. */
+internal class FeignPanel(
+    private val project: Project,
+    private val host: RequestHost,
+    private val onCount: (Int) -> Unit,
+) : JPanel(BorderLayout()), Disposable {
     private val root = DefaultMutableTreeNode()
     private val treeModel = DefaultTreeModel(root)
     private val tree = Tree(treeModel)
@@ -93,15 +74,38 @@ private class FeignPanel(private val project: Project) : JPanel(BorderLayout()),
             override fun removeUpdate(e: DocumentEvent) = applyFilter()
             override fun changedUpdate(e: DocumentEvent) = applyFilter()
         })
+        profiles.toolTipText = "Spring profile used to resolve addresses"
         profiles.addActionListener {
             if (updatingProfiles) return@addActionListener
             val selected = profiles.selectedItem as? String
             FeignResolver.selectProfile(project, selected?.takeIf { it != DEFAULT })
             refresh()
         }
-        val top = JPanel(BorderLayout())
-        top.add(profiles, BorderLayout.WEST)
-        top.add(search, BorderLayout.CENTER)
+
+        val left = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply {
+            isOpaque = false
+            add(
+                toolbarOf(
+                    "TendrilFeign", this@FeignPanel,
+                    object : AnAction("Refresh", "Scan the project again", AllIcons.Actions.Refresh), DumbAware {
+                        override fun actionPerformed(e: AnActionEvent) = refresh()
+                    },
+                    object : AnAction(
+                        "Write http-client.env.json",
+                        "Write the address of every client, per profile, to an HTTP client environment file",
+                        AllIcons.Actions.MenuSaveall,
+                    ), DumbAware {
+                        override fun actionPerformed(e: AnActionEvent) = generateEnvFile()
+                    },
+                ),
+            )
+            add(profiles)
+        }
+        val top = JPanel(BorderLayout()).apply {
+            border = JBUI.Borders.empty(2, 4)
+            add(left, BorderLayout.WEST)
+            add(search, BorderLayout.CENTER)
+        }
         add(top, BorderLayout.NORTH)
         add(JBScrollPane(tree), BorderLayout.CENTER)
     }
@@ -123,6 +127,7 @@ private class FeignPanel(private val project: Project) : JPanel(BorderLayout()),
                 profiles.selectedItem = FeignResolver.selectedProfile(project) ?: DEFAULT
                 updatingProfiles = false
                 all = infos
+                onCount(infos.sumOf { it.def.calls.size })
                 applyFilter()
             }
             .submit(AppExecutorUtil.getAppExecutorService())
@@ -130,7 +135,12 @@ private class FeignPanel(private val project: Project) : JPanel(BorderLayout()),
 
     private fun applyFilter() {
         val q = search.text.trim().lowercase()
-        tree.emptyText.text = if (all.isEmpty()) "No @FeignClient interfaces found" else "Nothing matches"
+        val empty = tree.emptyText
+        if (all.isEmpty()) {
+            empty.setText("No Feign clients found").appendLine("Interfaces annotated with @FeignClient are listed here.")
+        } else {
+            empty.setText("Nothing matches \"${search.text.trim()}\"")
+        }
         root.removeAllChildren()
         for (info in all) {
             val calls = info.def.calls.filter { c ->
@@ -168,20 +178,21 @@ private class FeignPanel(private val project: Project) : JPanel(BorderLayout()),
             }
             return when (val s = selected()) {
                 is CallNode -> arrayOf(
+                    action("Send Request") {
+                        host.sendRequest(ReadAction.compute<String, Throwable> { FeignRequests.http(s.info, s.call) })
+                    },
+                    Separator.create(),
                     action("Go to Source") { navigate() },
                     action("Copy URL") { copy("URL", ReadAction.compute<String, Throwable> { FeignRequests.url(s.info, s.call) }) },
                     action("Copy as cURL") {
                         copy("cURL command", ReadAction.compute<String, Throwable> { FeignRequests.curl(s.info, s.call) })
                     },
-                    action("Send Request…") {
-                        val text = ReadAction.compute<String, Throwable> { FeignRequests.http(s.info, s.call) }
-                        dev.tendril.http.HttpToolWindowFactory.open(project, text)
-                    },
-                    action("Open as .http Request") { openHttp(s.info, s.call) },
+                    action("Open as .http File") { openHttp(s.info, s.call) },
                 )
                 is ClientNode -> buildList {
                     add(action("Go to Source") { navigate() })
                     s.info.resolution.url?.let { url -> add(action("Copy Address") { copy("Address", url) }) }
+                    add(Separator.create())
                     add(action("Set Address for '${s.info.name}'…") { setAddress(s.info) })
                     if (TendrilSettings.getInstance(project).state.serviceUrls.containsKey(s.info.name)) {
                         add(action("Clear Address Override") { clearAddress(s.info) })
@@ -195,8 +206,8 @@ private class FeignPanel(private val project: Project) : JPanel(BorderLayout()),
     private fun setAddress(info: FeignClientInfo) {
         val settings = TendrilSettings.getInstance(project).state
         val value = Messages.showInputDialog(
-            project, "Base URL of service '${info.name}' (used when the client has no resolvable url):",
-            "Tendril: Feign Service Address", null, settings.serviceUrls[info.name] ?: info.resolution.url.orEmpty(), null,
+            project, "Base URL of '${info.name}'. Used when the client has no url of its own.",
+            "Set Service Address", null, settings.serviceUrls[info.name] ?: info.resolution.url.orEmpty(), null,
         )?.trim() ?: return
         if (value.isEmpty()) settings.serviceUrls.remove(info.name) else settings.serviceUrls[info.name] = value
         refresh()
@@ -223,7 +234,7 @@ private class FeignPanel(private val project: Project) : JPanel(BorderLayout()),
     }
 
     /** Writes `http-client.env.json` (address per profile) and, if missing, a private file with token placeholders. */
-    fun generateEnvFile() {
+    private fun generateEnvFile() {
         ReadAction.nonBlocking<Map<String, Map<String, String>>> {
             val defs = FeignScanner.cached(project)
             val result = linkedMapOf<String, Map<String, String>>()
@@ -241,7 +252,7 @@ private class FeignPanel(private val project: Project) : JPanel(BorderLayout()),
             .expireWith(this)
             .finishOnUiThread(ModalityState.any()) { environments ->
                 if (environments.isEmpty()) {
-                    notify("No Feign client address could be resolved, nothing to write", NotificationType.WARNING)
+                    notify("No client address could be resolved, so nothing was written", NotificationType.WARNING)
                     return@finishOnUiThread
                 }
                 writeEnvFiles(environments)
@@ -255,7 +266,7 @@ private class FeignPanel(private val project: Project) : JPanel(BorderLayout()),
         val target = base.resolve("http-client.env.json")
         if (Files.exists(target) &&
             Messages.showYesNoDialog(
-                project, "http-client.env.json already exists. Overwrite it?", "Tendril", Messages.getQuestionIcon(),
+                project, "http-client.env.json already exists. Replace it?", "Write Environment File", Messages.getQuestionIcon(),
             ) != Messages.YES
         ) return
 
@@ -272,7 +283,7 @@ private class FeignPanel(private val project: Project) : JPanel(BorderLayout()),
         }
         LocalFileSystem.getInstance().refreshNioFiles(listOf(target, private))
         notify(
-            "Wrote http-client.env.json" + if (createdPrivate) " and http-client.private.env.json (add it to .gitignore)" else "",
+            "Wrote http-client.env.json" + if (createdPrivate) " and http-client.private.env.json. Add the private file to .gitignore." else "",
             NotificationType.INFORMATION,
         )
     }
@@ -299,12 +310,13 @@ private class FeignRenderer : ColoredTreeCellRenderer() {
                 append(info.name.ifBlank { info.def.className }, SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
                 val url = info.resolution.url
                 if (url != null) {
-                    append("   $url", SimpleTextAttributes.REGULAR_ATTRIBUTES)
+                    append("   $url")
                     append("   ${info.resolution.source}", SimpleTextAttributes.GRAYED_ATTRIBUTES)
                 } else {
-                    append("   unresolved", SimpleTextAttributes.ERROR_ATTRIBUTES)
+                    append("   No address", SimpleTextAttributes.ERROR_ATTRIBUTES)
                     val missing = info.resolution.unresolved.joinToString(", ") { "\${$it}" }
-                    append("   ${info.resolution.source}" + if (missing.isEmpty()) "" else ": $missing", SimpleTextAttributes.GRAYED_ATTRIBUTES)
+                    val hint = if (missing.isEmpty()) "Right-click to set one." else "Undefined: $missing. Right-click to set an address."
+                    append("   $hint", SimpleTextAttributes.GRAYED_ATTRIBUTES)
                 }
             }
             is CallNode -> {
