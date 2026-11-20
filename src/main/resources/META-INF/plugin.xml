@@ -1,0 +1,48 @@
+<idea-plugin>
+    <id>dev.tendril</id>
+    <name>Tendril</name>
+    <vendor>tendril</vendor>
+    <description><![CDATA[
+    Spring Boot tooling without an Ultimate subscription: property and value completion,
+    unknown-property inspection, endpoint explorer and bean navigation gutter icons.
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.java</depends>
+    <depends>com.intellij.properties</depends>
+    <depends>org.jetbrains.plugins.yaml</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <completion.contributor language="Properties"
+                                implementationClass="dev.tendril.config.SpringPropertyCompletionContributor"/>
+        <completion.contributor language="yaml"
+                                implementationClass="dev.tendril.config.SpringYamlCompletionContributor"/>
+        <localInspection language="Properties" groupName="Tendril" enabledByDefault="true"
+                         level="WEAK WARNING" shortName="TendrilUnknownPropertiesKey"
+                         displayName="Unknown Spring Boot property"
+                         implementationClass="dev.tendril.config.UnknownPropertiesKeyInspection"/>
+        <localInspection language="yaml" groupName="Tendril" enabledByDefault="true"
+                         level="WEAK WARNING" shortName="TendrilUnknownYamlKey"
+                         displayName="Unknown Spring Boot property"
+                         implementationClass="dev.tendril.config.UnknownYamlKeyInspection"/>
+        <completion.contributor language="JAVA"
+                                implementationClass="dev.tendril.config.ValuePlaceholderCompletionContributor"/>
+        <localInspection language="JAVA" groupName="Tendril" enabledByDefault="true"
+                         level="WEAK WARNING" shortName="TendrilUnresolvedValueKey"
+                         displayName="Unresolved configuration key in @Value"
+                         implementationClass="dev.tendril.config.UnresolvedValueKeyInspection"/>
+        <codeInsight.lineMarkerProvider language="JAVA"
+                                        implementationClass="dev.tendril.beans.BeanLineMarkerProvider"/>
+        <codeInsight.lineMarkerProvider language="JAVA"
+                                        implementationClass="dev.tendril.config.CodeToConfigLineMarkerProvider"/>
+        <codeInsight.lineMarkerProvider language="yaml"
+                                        implementationClass="dev.tendril.config.ConfigKeyLineMarkerProvider"/>
+        <codeInsight.lineMarkerProvider language="Properties"
+                                        implementationClass="dev.tendril.config.ConfigKeyLineMarkerProvider"/>
+        <gotoDeclarationHandler implementation="dev.tendril.config.ConfigKeyGotoDeclarationHandler"/>
+        <psi.referenceContributor language="JAVA"
+                                  implementation="dev.tendril.config.ValuePlaceholderReferenceContributor"/>
+        <toolWindow id="Spring Endpoints" anchor="right" icon="AllIcons.Nodes.Services"
+                    factoryClass="dev.tendril.endpoints.EndpointsToolWindowFactory"/>
+    </extensions>
+</idea-plugin>
