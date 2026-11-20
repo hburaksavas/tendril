@@ -30,6 +30,11 @@ Target: IntelliJ IDEA 2025.3+ (unified distribution). Stack: Kotlin, IntelliJ Pl
 ## Phase 4 — Running application (Actuator)
 - [x] Tool window reading `/actuator/beans`, `/mappings`, `/env`, `/health` of a running app
 
+## Phase 5 — Safety nets & live diagnostics
+- [x] Inspection: required `@ConfigurationProperties` property (`@Validated` + `@NotNull`/`@NotBlank`/`@NotEmpty`) missing from every config file
+- [x] Actuator: Loggers tab (change log level of the running app, reset to inherited)
+- [x] Actuator: Conditions tab (auto-configuration positive/negative matches)
+
 ## Quality (alongside every phase)
 - [ ] Automated tests (light fixture tests for completion, inspections, markers)
 - [ ] Settings page for the ignore list

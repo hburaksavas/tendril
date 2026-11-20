@@ -5,8 +5,13 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
+import com.intellij.notification.NotificationGroupManager
+import com.intellij.notification.NotificationType
+import com.intellij.openapi.actionSystem.ActionGroup
+import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.ui.PopupHandler
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.ReadAction
@@ -64,6 +69,8 @@ internal data class ActuatorNode(
     val detail: String = "",
     val color: SimpleTextAttributes? = null,
     val fqn: String? = null,
+    /** Identifier used by context-menu actions (e.g. a logger name). */
+    val key: String? = null,
     val children: List<ActuatorNode> = emptyList(),
 )
 
@@ -78,7 +85,10 @@ private class ActuatorPanel(private val project: Project) : JPanel(BorderLayout(
         ActuatorView("Beans", "beans", ::parseBeans),
         ActuatorView("Mappings", "mappings", ::parseMappings),
         ActuatorView("Env", "env", ::parseEnv),
+        ActuatorView("Loggers", "loggers", ::parseLoggers),
+        ActuatorView("Conditions", "conditions", ::parseConditions),
     )
+    private val loggersView = views[4]
 
     init {
         add(url, BorderLayout.NORTH)
@@ -87,6 +97,12 @@ private class ActuatorPanel(private val project: Project) : JPanel(BorderLayout(
         url.textEditor.addActionListener { refreshAll() }
         tabs.addChangeListener { views[tabs.selectedIndex].let { if (!it.loaded) fetch(it) } }
         views.forEach { it.onNavigate = ::navigateToClass }
+        loggersView.actions = { node ->
+            val name = node.key
+            if (name == null) emptyList() else
+                (LOG_LEVELS.map { level -> loggerAction("Set $level", name, level) } +
+                    loggerAction("Reset (inherit from parent)", name, null))
+        }
         views[0].setMessage("Press Refresh (or Enter in the URL field) to read the running application")
     }
 
@@ -130,6 +146,39 @@ private class ActuatorPanel(private val project: Project) : JPanel(BorderLayout(
         return JsonParser.parseString(response.body()).asJsonObject
     }
 
+    private fun loggerAction(text: String, logger: String, level: String?): AnAction =
+        object : AnAction(text), DumbAware {
+            override fun actionPerformed(e: AnActionEvent) = setLogLevel(logger, level)
+            override fun getActionUpdateThread() = ActionUpdateThread.BGT
+        }
+
+    /** POST /loggers/{name} {"configuredLevel": level}; a null level resets the logger. */
+    private fun setLogLevel(logger: String, level: String?) {
+        val base = url.text.trim().trimEnd('/')
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val result = runCatching {
+                val body = if (level == null) """{"configuredLevel":null}""" else """{"configuredLevel":"$level"}"""
+                val request = HttpRequest.newBuilder(URI.create("$base/loggers/$logger"))
+                    .timeout(Duration.ofSeconds(10))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(body)).build()
+                val status = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build()
+                    .send(request, HttpResponse.BodyHandlers.discarding()).statusCode()
+                if (status !in 200..299) throw HttpStatus(status)
+            }
+            ApplicationManager.getApplication().invokeLater({
+                result.onSuccess { fetch(loggersView) }.onFailure {
+                    NotificationGroupManager.getInstance().getNotificationGroup("Tendril")
+                        ?.createNotification(
+                            "Could not change the level of $logger: ${it.message}. " +
+                                "The loggers endpoint must be exposed and writable.",
+                            NotificationType.WARNING,
+                        )?.notify(project)
+                }
+            }, ModalityState.any())
+        }
+    }
+
     private class HttpStatus(val code: Int) : RuntimeException("HTTP $code")
 
     private fun describe(error: Throwable, base: String, path: String): String = when {
@@ -157,6 +206,9 @@ private class ActuatorView(
     var loaded = false
     var onNavigate: (String) -> Unit = {}
 
+    /** Context-menu actions for the selected row; empty means no menu. */
+    var actions: (ActuatorNode) -> List<AnAction> = { emptyList() }
+
     private val root = DefaultMutableTreeNode()
     private val model = DefaultTreeModel(root)
     private val tree = Tree(model)
@@ -183,6 +235,18 @@ private class ActuatorView(
                 n?.fqn?.let(onNavigate)
             }
         })
+        PopupHandler.installPopupMenu(
+            tree,
+            object : ActionGroup() {
+                override fun getChildren(e: AnActionEvent?): Array<AnAction> {
+                    val n = (tree.lastSelectedPathComponent as? DefaultMutableTreeNode)?.userObject as? ActuatorNode
+                    return if (n == null) AnAction.EMPTY_ARRAY else actions(n).toTypedArray()
+                }
+
+                override fun getActionUpdateThread() = ActionUpdateThread.EDT
+            },
+            "TendrilActuatorPopup",
+        )
         search.addDocumentListener(object : DocumentListener {
             override fun insertUpdate(e: DocumentEvent) = rebuild()
             override fun removeUpdate(e: DocumentEvent) = rebuild()
@@ -315,6 +379,59 @@ private fun parseEnv(json: JsonObject): List<ActuatorNode> {
             ActuatorNode(k, value)
         }
         out += ActuatorNode(o.str("name").orEmpty(), "${props.size}", children = props)
+    }
+    return out
+}
+
+private val LOG_LEVELS = listOf("TRACE", "DEBUG", "INFO", "WARN", "ERROR", "OFF")
+
+private fun parseLoggers(json: JsonObject): List<ActuatorNode> {
+    val loggers = json.get("loggers").obj() ?: return emptyList()
+    return loggers.entrySet().sortedWith(compareBy({ it.key != "ROOT" }, { it.key })).map { (name, v) ->
+        val o = v.obj()
+        val effective = o?.str("effectiveLevel") ?: "?"
+        val configured = o?.str("configuredLevel")
+        val color = when (effective) {
+            "TRACE", "DEBUG" -> OTHER
+            "ERROR", "OFF" -> DOWN
+            else -> null
+        }
+        ActuatorNode(
+            label = name,
+            detail = effective + (configured?.let { "  (configured: $it)" } ?: ""),
+            color = color,
+            fqn = name.takeIf { it.substringAfterLast('.').firstOrNull()?.isUpperCase() == true },
+            key = name,
+        )
+    }
+}
+
+private fun parseConditions(json: JsonObject): List<ActuatorNode> {
+    val contexts = json.get("contexts").obj() ?: return emptyList()
+    val out = mutableListOf<ActuatorNode>()
+    for ((ctxName, ctx) in contexts.entrySet()) {
+        val c = ctx.obj() ?: continue
+        fun messages(arr: JsonElement?): List<ActuatorNode> =
+            arr?.takeIf { it.isJsonArray }?.asJsonArray?.mapNotNull { it.obj() }?.map {
+                ActuatorNode(it.str("condition").orEmpty().substringAfterLast('.'), it.str("message").orEmpty())
+            }.orEmpty()
+
+        val positive = c.get("positiveMatches").obj()?.entrySet().orEmpty().sortedBy { it.key }.map { (name, v) ->
+            ActuatorNode(name.substringAfterLast('.'), name.substringBeforeLast('.', ""), UP, name, children = messages(v))
+        }
+        val negative = c.get("negativeMatches").obj()?.entrySet().orEmpty().sortedBy { it.key }.map { (name, v) ->
+            ActuatorNode(
+                name.substringAfterLast('.'), name.substringBeforeLast('.', ""), DOWN, name,
+                children = messages(v.obj()?.get("notMatched")),
+            )
+        }
+        out += ActuatorNode(
+            ctxName,
+            children = listOf(
+                ActuatorNode("Positive matches", "${positive.size}", children = positive),
+                ActuatorNode("Negative matches", "${negative.size}", children = negative),
+            ),
+        )
     }
     return out
 }

@@ -31,6 +31,10 @@
                          level="WEAK WARNING" shortName="TendrilUnresolvedValueKey"
                          displayName="Unresolved configuration key in @Value"
                          implementationClass="dev.tendril.config.UnresolvedValueKeyInspection"/>
+        <localInspection language="JAVA" groupName="Tendril" enabledByDefault="true"
+                         level="WARNING" shortName="TendrilMissingRequiredProperty"
+                         displayName="Required configuration property is not defined"
+                         implementationClass="dev.tendril.config.MissingRequiredPropertyInspection"/>
         <codeInsight.lineMarkerProvider language="JAVA"
                                         implementationClass="dev.tendril.beans.BeanLineMarkerProvider"/>
         <codeInsight.lineMarkerProvider language="JAVA"
