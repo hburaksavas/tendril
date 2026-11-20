@@ -39,7 +39,7 @@ object EndpointRequests {
     private fun verb(e: Endpoint) = if (e.httpMethod == "ANY") "GET" else e.httpMethod
 
     /** http://localhost:<server.port or 8080><server.servlet.context-path>, read from the project's config files. */
-    private fun baseUrl(project: Project): String {
+    fun baseUrl(project: Project): String {
         val port = configValue(project, "server.port")?.takeIf { it.all(Char::isDigit) } ?: "8080"
         val context = configValue(project, "server.servlet.context-path")?.trim('/')?.takeIf { it.isNotEmpty() }
         return "http://localhost:$port" + (context?.let { "/$it" } ?: "")

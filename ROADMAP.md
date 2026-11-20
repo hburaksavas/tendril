@@ -28,7 +28,7 @@ Target: IntelliJ IDEA 2025.3+ (unified distribution). Stack: Kotlin, IntelliJ Pl
 - [x] Generate a `.http` request (scratch file) for the selected endpoint
 
 ## Phase 4 — Running application (Actuator)
-- [ ] Tool window reading `/actuator/beans`, `/mappings`, `/env`, `/health` of a running app
+- [x] Tool window reading `/actuator/beans`, `/mappings`, `/env`, `/health` of a running app
 
 ## Quality (alongside every phase)
 - [ ] Automated tests (light fixture tests for completion, inspections, markers)

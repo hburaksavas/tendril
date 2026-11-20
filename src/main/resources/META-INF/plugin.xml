@@ -62,5 +62,7 @@
                     factoryClass="dev.tendril.beans.BeansToolWindowFactory"/>
         <toolWindow id="Spring Endpoints" anchor="right" icon="AllIcons.Nodes.Services"
                     factoryClass="dev.tendril.endpoints.EndpointsToolWindowFactory"/>
+        <toolWindow id="Spring Actuator" anchor="right" icon="AllIcons.Actions.Execute"
+                    factoryClass="dev.tendril.actuator.ActuatorToolWindowFactory"/>
     </extensions>
 </idea-plugin>
