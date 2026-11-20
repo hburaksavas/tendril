@@ -43,6 +43,16 @@ Target: IntelliJ IDEA 2025.3+ (unified distribution). Stack: Kotlin, IntelliJ Pl
 - [x] Built-in HTTP client ("HTTP Requests" tool window): `.http` syntax, `@var = value` and env-file variables, send and read the response, no paid IDE feature needed
 - [ ] Settings page for the service-address table and name key templates
 
+## Phase 7 — Recordings (record and replay at runtime)
+- [x] Recorder agent (`recorder` module, bundled in the plugin): a `-javaagent` that Spring Boot picks up as an auto-configuration; works with `spring-boot:run`
+- [x] Incoming HTTP with bodies, handler and flow; outgoing Feign calls with responses; `@RabbitListener` / `@KafkaListener` input
+- [x] Recordings tool window (own icon): latest 10 per kind, details, replay (HTTP, Feign) and republish (messages, through the application's own template)
+- [x] "Add Recorder to Maven Run Configuration" (toggles the agent in `spring-boot.run.jvmArguments`), plus "Copy Agent Argument" for other run types
+- [x] Secrets masked before leaving the application (auth headers, password/token fields); loopback + token only
+- [ ] Spring Boot 2 / javax servlet, Gradle `bootRun` helper, `.jar` launch (fat jar class loader)
+- [ ] Service-method tree (calls between beans) and recording of non-HTTP outgoing calls
+- [ ] Feign recordings served as stubs
+
 ## Quality (alongside every phase)
 - [ ] Automated tests (light fixture tests for completion, inspections, markers)
 - [ ] Settings page for the ignore list

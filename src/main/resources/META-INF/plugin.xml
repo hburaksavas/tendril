@@ -11,6 +11,7 @@
     <depends>com.intellij.java</depends>
     <depends>com.intellij.properties</depends>
     <depends>org.jetbrains.plugins.yaml</depends>
+    <depends optional="true" config-file="tendril-maven.xml">org.jetbrains.idea.maven</depends>
 
     <extensions defaultExtensionNs="com.intellij">
         <completion.contributor language="Properties"
@@ -68,6 +69,9 @@
                                        implementationClass="dev.tendril.http.HttpSyntaxHighlighterFactory"/>
         <codeInsight.lineMarkerProvider language="TendrilHttp"
                                         implementationClass="dev.tendril.http.HttpLineMarkerProvider"/>
+        <postStartupActivity implementation="dev.tendril.recordings.RecordingsStartup"/>
+        <toolWindow id="Recordings" anchor="bottom" icon="/icons/recordings.svg"
+                    factoryClass="dev.tendril.recordings.RecordingsToolWindowFactory"/>
         <notificationGroup id="Tendril" displayType="BALLOON"/>
         <toolWindow id="Spring Beans" anchor="right" icon="AllIcons.Nodes.Class"
                     factoryClass="dev.tendril.beans.BeansToolWindowFactory"/>

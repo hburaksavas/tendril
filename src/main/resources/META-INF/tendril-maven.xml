@@ -1,0 +1,9 @@
+<idea-plugin>
+    <!-- Only loaded when the Maven plugin is present. -->
+    <actions>
+        <action id="Tendril.AddRecorderToMavenRun"
+                class="dev.tendril.recordings.maven.AddRecorderToMavenRunAction"
+                text="Add Recorder to Maven Run Configuration"
+                description="Attach the Tendril recorder to a spring-boot:run configuration"/>
+    </actions>
+</idea-plugin>
