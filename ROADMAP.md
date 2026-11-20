@@ -17,10 +17,10 @@ Target: IntelliJ IDEA 2025.3+ (unified distribution). Stack: Kotlin, IntelliJ Pl
 - [x] Profile awareness: profile name completion, profile labels in navigation popups, YAML multi-document (`---`) handling
 
 ## Phase 2 — Go deeper on beans
-- [ ] Reverse navigation: gutter icon on a bean "injected into…"
-- [ ] Spring Beans tool window (stereotypes, `@Bean`, configuration classes; searchable)
-- [ ] Inspections: field injection → constructor injection quick fix; no bean found; multiple candidates without `@Primary` / `@Qualifier`
-- [ ] Circular constructor-dependency detection
+- [x] Reverse navigation: gutter icon on a bean "injected into…"
+- [x] Spring Beans tool window (stereotypes, `@Bean`, configuration classes; searchable)
+- [x] Inspections: field injection → constructor injection quick fix; no bean found; multiple candidates without `@Primary` / `@Qualifier`
+- [x] Circular bean-dependency detection (constructor and field injection, `@Lazy` breaks the cycle)
 
 ## Phase 3 — Endpoint explorer
 - [ ] HTTP-method colours, copy URL, group by controller

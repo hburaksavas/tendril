@@ -42,6 +42,22 @@
         <gotoDeclarationHandler implementation="dev.tendril.config.ConfigKeyGotoDeclarationHandler"/>
         <psi.referenceContributor language="JAVA"
                                   implementation="dev.tendril.config.ValuePlaceholderReferenceContributor"/>
+        <codeInsight.lineMarkerProvider language="JAVA"
+                                        implementationClass="dev.tendril.beans.BeanUsagesLineMarkerProvider"/>
+        <localInspection language="JAVA" groupName="Tendril" enabledByDefault="true" level="WEAK WARNING"
+                         shortName="TendrilFieldInjection" displayName="Field injection"
+                         implementationClass="dev.tendril.beans.FieldInjectionInspection"/>
+        <localInspection language="JAVA" groupName="Tendril" enabledByDefault="true" level="WEAK WARNING"
+                         shortName="TendrilNoBeanFound" displayName="No bean of the injected type"
+                         implementationClass="dev.tendril.beans.NoBeanFoundInspection"/>
+        <localInspection language="JAVA" groupName="Tendril" enabledByDefault="true" level="WARNING"
+                         shortName="TendrilAmbiguousBean" displayName="Multiple beans of the injected type"
+                         implementationClass="dev.tendril.beans.AmbiguousBeanInspection"/>
+        <localInspection language="JAVA" groupName="Tendril" enabledByDefault="true" level="WARNING"
+                         shortName="TendrilCircularDependency" displayName="Circular bean dependency"
+                         implementationClass="dev.tendril.beans.CircularDependencyInspection"/>
+        <toolWindow id="Spring Beans" anchor="right" icon="AllIcons.Nodes.Class"
+                    factoryClass="dev.tendril.beans.BeansToolWindowFactory"/>
         <toolWindow id="Spring Endpoints" anchor="right" icon="AllIcons.Nodes.Services"
                     factoryClass="dev.tendril.endpoints.EndpointsToolWindowFactory"/>
     </extensions>

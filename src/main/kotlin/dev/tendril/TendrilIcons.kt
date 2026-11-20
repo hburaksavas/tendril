@@ -11,4 +11,8 @@ object TendrilIcons {
     /** Green leaf with an orange arrow: Java code -> config key it reads. */
     @JvmField
     val CodeToConfig: Icon = IconLoader.getIcon("/icons/codeToConfig.svg", TendrilIcons::class.java)
+
+    /** Green leaf with a purple up arrow: bean definition -> places it is injected into. */
+    @JvmField
+    val BeanUsages: Icon = IconLoader.getIcon("/icons/beanUsages.svg", TendrilIcons::class.java)
 }
