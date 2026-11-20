@@ -19,6 +19,9 @@ private fun report(holder: ProblemsHolder, at: PsiElement, key: String) {
     val module = ModuleUtilCore.findModuleForPsiElement(at) ?: return
     if (TendrilSettings.getInstance(module.project).isIgnored(key)) return
     if (ConfigMetadata.index(module).isKnown(key)) return
+    // keys the project's own code reads (e.g. the address of a Feign client by service name)
+    val norm = MetadataIndex.normalize(key)
+    if (ConfigMetadata.ownScan(module.project).byKey.keys.any { it == norm || it.startsWith("$norm.") }) return
 
     holder.registerProblem(
         at,

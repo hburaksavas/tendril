@@ -36,7 +36,7 @@ object FeignResolver {
     /** Config keys tried for a name-only client; `{name}` is replaced by the service name. */
     val NAME_KEYS = listOf(
         "spring.cloud.openfeign.client.config.{name}.url",
-        "spring.cloud.discovery.client.simple.instances.{name}[0].uri",
+        "$SIMPLE_INSTANCES.{name}[0].uri",
         "{name}.ribbon.listOfServers",
         "{name}.url",
         "{name}.base-url",
@@ -86,7 +86,7 @@ object FeignResolver {
         }
 
         // SimpleDiscoveryClient's host/port/secure form (instead of a single uri)
-        val instance = "spring.cloud.discovery.client.simple.instances.$name[0]"
+        val instance = "$SIMPLE_INSTANCES.$name[0]"
         fun part(suffix: String): String? =
             valueFor(ConfigNavigation.allConfigElements(project, "$instance.$suffix"), profile)
                 ?.let { substitute(project, it, profile) }?.takeIf { it.second.isEmpty() }?.first
@@ -135,18 +135,44 @@ object FeignResolver {
         return current to unresolved.toList()
     }
 
+    /** Config keys through which the address of service [name] can be given (well-known names and discovery instances). */
+    fun addressKeys(name: String): List<String> =
+        NAME_KEYS.map { it.replace("{name}", name) } +
+            listOf("uri", "host", "port").map { "$SIMPLE_INSTANCES.$name[0].$it" }
+
+    /**
+     * Every config entry (all profiles) that holds the address of service [name]: the well-known keys, discovery
+     * instances and, as a fallback, any key mentioning the service whose value is an http(s) URL. Needs a read action.
+     */
+    fun addressElements(project: Project, name: String): List<PsiElement> {
+        val out = LinkedHashSet<PsiElement>()
+        for (key in addressKeys(name)) out += ConfigNavigation.allConfigElements(project, key)
+        if (out.isEmpty()) {
+            val needle = name.lowercase().filter { it.isLetterOrDigit() }
+            if (needle.length >= 3) {
+                for ((key, elements) in ConfigNavigation.allEntries(project)) {
+                    if (!key.replace(".", "").contains(needle)) continue
+                    elements.filterTo(out) { valueOf(it)?.let { v -> v.startsWith("http://") || v.startsWith("https://") } == true }
+                }
+            }
+        }
+        return out.toList()
+    }
+
     /** The profile-specific value if the profile defines one, else the default (profile-less) value. */
     private fun valueFor(elements: List<PsiElement>, profile: String?): String? {
         val ordered = (if (profile != null) elements.filter { ConfigProfiles.profileOf(it) == profile } else emptyList()) +
             elements.filter { ConfigProfiles.profileOf(it) == null }
-        return ordered.firstNotNullOfOrNull {
-            when (it) {
-                is YAMLKeyValue -> it.valueText.takeIf { v -> v.isNotBlank() }
-                is Property -> it.unescapedValue?.takeIf { v -> v.isNotBlank() }
-                else -> null
-            }
-        }
+        return ordered.firstNotNullOfOrNull { valueOf(it) }
     }
+
+    private fun valueOf(e: PsiElement): String? = when (e) {
+        is YAMLKeyValue -> e.valueText.takeIf { v -> v.isNotBlank() }
+        is Property -> e.unescapedValue?.takeIf { v -> v.isNotBlank() }
+        else -> null
+    }
+
+    private const val SIMPLE_INSTANCES = "spring.cloud.discovery.client.simple.instances"
 
     private fun keyText(e: PsiElement): String = when (e) {
         is YAMLKeyValue -> ConfigNavigation.yamlPath(e)

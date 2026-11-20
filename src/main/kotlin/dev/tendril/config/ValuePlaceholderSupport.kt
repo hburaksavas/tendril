@@ -14,7 +14,7 @@ import com.intellij.util.ProcessingContext
 
 private fun valueAnnotationOf(literal: PsiLiteralExpression): PsiAnnotation? =
     PsiTreeUtil.getParentOfType(literal, PsiAnnotation::class.java)
-        ?.takeIf { it.qualifiedName == ProjectConfigProperties.VALUE }
+        ?.takeIf { it.qualifiedName in ProjectConfigProperties.PLACEHOLDER_ANNOTATIONS }
 
 /** Key completion inside `@Value("${...}")`. */
 class ValuePlaceholderCompletionContributor : CompletionContributor() {

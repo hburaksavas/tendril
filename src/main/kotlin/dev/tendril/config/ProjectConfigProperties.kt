@@ -29,6 +29,14 @@ object ProjectConfigProperties {
     const val VALUE = "org.springframework.beans.factory.annotation.Value"
     private const val CONFIGURATION_PROPERTIES = "org.springframework.boot.context.properties.ConfigurationProperties"
     val PLACEHOLDER = Regex("""\$\{\s*([^}:\s]+)""")
+
+    val FEIGN_CLIENT = listOf(
+        "org.springframework.cloud.openfeign.FeignClient",
+        "org.springframework.cloud.netflix.feign.FeignClient",
+    )
+
+    /** Annotations whose string attributes may contain `${config.key}` placeholders. */
+    val PLACEHOLDER_ANNOTATIONS: Set<String> = setOf(VALUE) + FEIGN_CLIENT
     private const val MAX_DEPTH = 4
 
     fun scan(project: Project): ProjectConfigScan {
@@ -67,7 +75,37 @@ object ProjectConfigProperties {
                 }
             }
         }
+        scanFeign(project, props, sources)
         return ProjectConfigScan(props.values.toList(), sources)
+    }
+
+    /**
+     * `@FeignClient`: placeholders in url / name / path are consumed config keys; a literal service name is
+     * consumed through the well-known address keys ([dev.tendril.feign.FeignResolver.NAME_KEYS]).
+     */
+    private fun scanFeign(project: Project, props: MutableMap<String, SpringProperty>, sources: MutableList<ConfigSource>) {
+        val facade = JavaPsiFacade.getInstance(project)
+        val scope = GlobalSearchScope.projectScope(project)
+        for (fqn in FEIGN_CLIENT) {
+            val ann = facade.findClass(fqn, GlobalSearchScope.allScope(project)) ?: continue
+            for (cls in AnnotatedElementsSearch.searchPsiClasses(ann, scope).findAll()) {
+                val a = cls.getAnnotation(fqn) ?: continue
+                for (attr in listOf("url", "name", "value", "serviceId", "path")) {
+                    for (text in dev.tendril.endpoints.EndpointScanner.attrValues(a, attr)) {
+                        for (m in PLACEHOLDER.findAll(text)) {
+                            val key = m.groupValues[1]
+                            props.putIfAbsent(key, SpringProperty(key, "java.lang.String", "Referenced via @FeignClient", null))
+                            sources += ConfigSource(key, cls)
+                        }
+                    }
+                }
+                val name = listOf("name", "value", "serviceId").firstNotNullOfOrNull { attr ->
+                    dev.tendril.endpoints.EndpointScanner.attrValues(a, attr).firstOrNull()
+                        ?.takeIf { it.isNotBlank() && '$' !in it }
+                } ?: continue
+                for (key in dev.tendril.feign.FeignResolver.addressKeys(name)) sources += ConfigSource(key, cls)
+            }
+        }
     }
 
     private fun prefixOf(annotation: PsiAnnotation?): String =

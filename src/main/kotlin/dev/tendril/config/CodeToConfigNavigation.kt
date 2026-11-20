@@ -21,11 +21,24 @@ class ValuePlaceholderReferenceContributor : PsiReferenceContributor() {
                     if (literal.value !is String) return PsiReference.EMPTY_ARRAY
                     val annotation = PsiTreeUtil.getParentOfType(literal, PsiAnnotation::class.java)
                         ?: return PsiReference.EMPTY_ARRAY
-                    if (annotation.qualifiedName != ProjectConfigProperties.VALUE) return PsiReference.EMPTY_ARRAY
+                    if (annotation.qualifiedName !in ProjectConfigProperties.PLACEHOLDER_ANNOTATIONS) {
+                        return PsiReference.EMPTY_ARRAY
+                    }
 
-                    return ProjectConfigProperties.PLACEHOLDER.findAll(literal.text).mapNotNull { m ->
+                    val placeholders = ProjectConfigProperties.PLACEHOLDER.findAll(literal.text).mapNotNull { m ->
                         m.groups[1]?.let { g -> ConfigKeyReference(literal, TextRange(g.range.first, g.range.last + 1)) }
-                    }.toList().toTypedArray()
+                    }.toList()
+                    if (placeholders.isNotEmpty()) return placeholders.toTypedArray()
+
+                    // @FeignClient("credit-service"): Ctrl+Click jumps to the config that holds its address
+                    if (annotation.qualifiedName in ProjectConfigProperties.FEIGN_CLIENT) {
+                        val attribute = PsiTreeUtil.getParentOfType(literal, PsiNameValuePair::class.java)?.name ?: "value"
+                        val text = literal.text
+                        if (attribute in setOf("name", "value", "serviceId") && text.length > 2) {
+                            return arrayOf(FeignServiceNameReference(literal, TextRange(1, text.length - 1)))
+                        }
+                    }
+                    return PsiReference.EMPTY_ARRAY
                 }
             },
         )
@@ -41,6 +54,16 @@ private class ConfigKeyReference(element: PsiLiteralExpression, range: TextRange
             .map { PsiElementResolveResult(it) }
             .toTypedArray()
     }
+}
+
+/** The service name of a `@FeignClient`: resolves to the config entries that give its address. */
+private class FeignServiceNameReference(element: PsiLiteralExpression, range: TextRange) :
+    PsiPolyVariantReferenceBase<PsiLiteralExpression>(element, range, true) {
+
+    override fun multiResolve(incompleteCode: Boolean): Array<ResolveResult> =
+        dev.tendril.feign.FeignResolver.addressElements(element.project, rangeInElement.substring(element.text))
+            .map { PsiElementResolveResult(it) }
+            .toTypedArray()
 }
 
 /**
