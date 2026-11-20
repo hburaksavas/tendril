@@ -27,6 +27,13 @@ import dev.tendril.endpoints.EndpointsToolWindowFactory
 import dev.tendril.endpoints.HttpMethodColors
 import dev.tendril.endpoints.toolbarOf
 import dev.tendril.http.HttpExecutor
+import dev.tendril.http.HttpFileType
+import dev.tendril.ui.Editors
+import dev.tendril.ui.Fragment
+import dev.tendril.ui.Palette
+import dev.tendril.ui.PainterListRenderer
+import dev.tendril.ui.RowPainter
+import com.intellij.openapi.fileTypes.PlainTextFileType
 import dev.tendril.http.HttpResult
 import dev.tendril.http.ParsedRequest
 import java.awt.BorderLayout
@@ -54,7 +61,7 @@ class RecordingsToolWindowFactory : ToolWindowFactory, DumbAware {
     }
 }
 
-private class RecordingsPanel(private val project: Project) : JPanel(BorderLayout()), Disposable {
+internal class RecordingsPanel(private val project: Project) : JPanel(BorderLayout()), Disposable {
     private val store = RecordingStore.getInstance(project)
     private val status = SimpleColoredComponent()
     private val tabs = JBTabbedPane()
@@ -150,36 +157,52 @@ private class RecordingsPanel(private val project: Project) : JPanel(BorderLayou
 }
 
 /** A list of the latest recordings of one kind, and the details of the selected one. */
-private class RecordingPane(private val project: Project, private val kind: RecordingKind) : JPanel(BorderLayout()) {
+internal class RecordingPane(private val project: Project, private val kind: RecordingKind) : JPanel(BorderLayout()) {
     private val model = DefaultListModel<Recording>()
     private val list = JBList(model)
-    private val request = textArea()
-    private val response = textArea()
-    private val replay = textArea()
+    private val renderer = PainterListRenderer<Recording>(rightAligned = true, bind = ::bindRow)
+    private val summary = SimpleColoredComponent()
+    private val facts = SimpleColoredComponent()
+    private val request = Editors.viewer(project)
+    private val response = Editors.viewer(project)
+    private val headers = Editors.viewer(project)
+    private val replay = Editors.viewer(project)
     private val details = JBTabbedPane()
     private val replayButton = JButton(if (kind == RecordingKind.MESSAGE) "Republish" else if (kind == RecordingKind.OUTGOING) "Send again" else "Replay")
     private val openButton = JButton("Open in request editor")
     private val hint = JBLabel(" ")
 
     init {
-        list.cellRenderer = RecordingRenderer(kind)
+        list.cellRenderer = renderer
         list.emptyText.setText("Nothing recorded yet").appendLine(emptyHint())
         list.addListSelectionListener { if (!it.valueIsAdjusting) select() }
 
-        details.addTab("Request", JBScrollPane(request))
-        details.addTab(if (kind == RecordingKind.MESSAGE) "Message" else "Response", JBScrollPane(response))
-        details.addTab("Replay", JBScrollPane(replay))
+        details.addTab("Request", request)
+        details.addTab(if (kind == RecordingKind.MESSAGE) "Message" else "Response", response)
+        details.addTab("Headers", headers)
+        details.addTab("Replay", replay)
 
         replayButton.addActionListener { replaySelected() }
         openButton.addActionListener { openSelected() }
         openButton.isVisible = kind != RecordingKind.MESSAGE
-        val actions = JPanel(FlowLayout(FlowLayout.LEFT, 6, 4)).apply {
+        val actions = JPanel(FlowLayout(FlowLayout.LEFT, 6, 0)).apply {
+            isOpaque = false
             add(replayButton)
             add(openButton)
             add(hint.apply { foreground = JBColor.GRAY })
         }
+        val titles = JPanel(BorderLayout()).apply {
+            isOpaque = false
+            add(summary, BorderLayout.NORTH)
+            add(facts.apply { border = JBUI.Borders.emptyTop(2) }, BorderLayout.CENTER)
+        }
+        val header = JPanel(BorderLayout()).apply {
+            border = JBUI.Borders.empty(8, 10, 6, 10)
+            add(titles, BorderLayout.NORTH)
+            add(actions.apply { border = JBUI.Borders.emptyTop(6) }, BorderLayout.SOUTH)
+        }
         val right = JPanel(BorderLayout()).apply {
-            add(actions, BorderLayout.NORTH)
+            add(header, BorderLayout.NORTH)
             add(details, BorderLayout.CENTER)
         }
         val splitter = OnePixelSplitter(false, "tendril.recordings.$kind", 0.42f)
@@ -191,10 +214,41 @@ private class RecordingPane(private val project: Project, private val kind: Reco
 
     fun show(recordings: List<Recording>) {
         val selected = list.selectedValue
+        // columns: one badge width, one text width, so status and time line up
+        renderer.painter.font = list.font
+        renderer.painter.badgeWidth = renderer.painter.badgeColumn(recordings.map { badgeOf(it) } + "DELETE")
+        renderer.painter.primaryColumn = minOf(
+            JBUI.scale(360), recordings.maxOfOrNull { renderer.painter.measure(primaryOf(it)) } ?: 0,
+        )
         model.clear()
         recordings.forEach { model.addElement(it) }
         list.setSelectedValue(selected, true)
         if (list.selectedIndex < 0 && model.size() > 0) list.selectedIndex = 0
+    }
+
+    private fun badgeOf(r: Recording) = if (kind == RecordingKind.MESSAGE) (r.transport ?: "message").uppercase() else r.method ?: "GET"
+
+    private fun primaryOf(r: Recording): List<Fragment> =
+        if (kind == RecordingKind.MESSAGE) {
+            listOfNotNull(
+                Fragment(r.destination.orEmpty()),
+                r.routingKey?.takeIf { it.isNotEmpty() && it != r.destination }?.let { Fragment("  $it", Palette.MUTED) },
+            )
+        } else Palette.path(RecordingText.shortUrl(r, kind))
+
+    private fun bindRow(p: RowPainter, r: Recording) {
+        p.badge = badgeOf(r)
+        p.badgeColor = if (kind == RecordingKind.MESSAGE) Palette.messageTransport(r.transport) else Palette.method(r.method)
+        p.primary = primaryOf(r)
+        p.secondary = buildList {
+            when {
+                r.status != null -> add(Fragment("${r.status}", Palette.status(r.status), bold = true))
+                r.error != null -> add(Fragment("failed", Palette.FAILED, bold = true))
+            }
+            if (kind == RecordingKind.MESSAGE && r.error != null) add(Fragment("failed", Palette.FAILED, bold = true))
+            if (r.durationMs > 0) add(Fragment("   ${r.durationMs} ms", Palette.MUTED))
+            add(Fragment("   ${RecordingText.TIME.format(Date(r.time))}", Palette.MUTED))
+        }
     }
 
     private fun emptyHint() = when (kind) {
@@ -208,11 +262,33 @@ private class RecordingPane(private val project: Project, private val kind: Reco
         replayButton.isEnabled = r != null && canReplay(r)
         openButton.isEnabled = r != null
         hint.text = if (r != null && !canReplay(r)) cannotReplay(r) else " "
-        request.text = r?.let { RecordingText.request(it) }.orEmpty()
-        response.text = r?.let { RecordingText.response(it) }.orEmpty()
-        replay.text = ""
-        request.caretPosition = 0
-        response.caretPosition = 0
+        summary.clear()
+        facts.clear()
+        if (r == null) {
+            summary.append("Select a recording to see it here", SimpleTextAttributes.GRAYED_ATTRIBUTES)
+        } else {
+            if (kind == RecordingKind.MESSAGE) {
+                summary.append("${(r.transport ?: "message").uppercase()}  ", SimpleTextAttributes(SimpleTextAttributes.STYLE_BOLD, Palette.messageTransport(r.transport)))
+                summary.append(r.destination.orEmpty(), SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
+            } else {
+                summary.append("${r.method}  ", SimpleTextAttributes(SimpleTextAttributes.STYLE_BOLD, Palette.method(r.method)))
+                summary.append(RecordingText.shortUrl(r, kind), SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
+                r.status?.let {
+                    summary.append("   $it ${HttpExecutor.reason(it)}".trimEnd(), SimpleTextAttributes(SimpleTextAttributes.STYLE_BOLD, Palette.status(it)))
+                }
+            }
+            val line = listOfNotNull(
+                r.handler?.let { "handled by $it" }, r.client?.let { "client $it" },
+                r.durationMs.takeIf { it > 0 }?.let { "$it ms" }, r.flow.takeIf { it > 0 }?.let { "flow $it" },
+                RecordingText.TIME.format(Date(r.time)),
+            ).joinToString("      ")
+            facts.append(line, SimpleTextAttributes.GRAYED_ATTRIBUTES)
+        }
+        Editors.show(request, r?.let { RecordingText.request(it) }.orEmpty(), if (r != null && kind != RecordingKind.MESSAGE) HttpFileType else PlainTextFileType.INSTANCE)
+        val body = r?.let { RecordingText.response(it) }.orEmpty()
+        Editors.show(response, body, Editors.typeOf(body))
+        Editors.show(headers, r?.let { RecordingText.headers(it) }.orEmpty(), PlainTextFileType.INSTANCE)
+        Editors.show(replay, "", PlainTextFileType.INSTANCE)
     }
 
     private fun canReplay(r: Recording): Boolean = when (kind) {
@@ -233,8 +309,8 @@ private class RecordingPane(private val project: Project, private val kind: Reco
     private fun replaySelected() {
         val r = list.selectedValue ?: return
         if (kind != RecordingKind.MESSAGE && !confirmTarget(r)) return
-        details.selectedIndex = 2
-        replay.text = "Sending…"
+        details.selectedIndex = 3
+        Editors.show(replay, "Sending…", PlainTextFileType.INSTANCE)
         replayButton.isEnabled = false
         ApplicationManager.getApplication().executeOnPooledThread {
             val text = if (kind == RecordingKind.MESSAGE) {
@@ -244,8 +320,7 @@ private class RecordingPane(private val project: Project, private val kind: Reco
                     .fold({ RecordingText.comparison(r, it) }, { "The request failed: ${it.message ?: it.javaClass.simpleName}" })
             }
             ApplicationManager.getApplication().invokeLater({
-                replay.text = text
-                replay.caretPosition = 0
+                Editors.show(replay, text, PlainTextFileType.INSTANCE)
                 replayButton.isEnabled = true
             }, ModalityState.any())
         }
@@ -258,44 +333,6 @@ private class RecordingPane(private val project: Project, private val kind: Reco
         return Messages.showYesNoDialog(
             project, "This sends a real ${r.method} request to $host. Continue?", "Replay request", Messages.getWarningIcon(),
         ) == Messages.YES
-    }
-
-    private fun textArea() = JBTextArea().apply {
-        isEditable = false
-        font = Font(Font.MONOSPACED, Font.PLAIN, 13)
-        margin = JBUI.insets(4, 6)
-    }
-}
-
-private class RecordingRenderer(private val kind: RecordingKind) : ColoredListCellRenderer<Recording>() {
-    override fun customizeCellRenderer(list: JList<out Recording>, value: Recording?, index: Int, selected: Boolean, hasFocus: Boolean) {
-        val r = value ?: return
-        when (kind) {
-            RecordingKind.MESSAGE -> {
-                append((r.transport ?: "message").padEnd(7), SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
-                append(r.destination ?: "")
-                r.routingKey?.takeIf { it.isNotEmpty() && it != r.destination }?.let { append("  $it", SimpleTextAttributes.GRAYED_ATTRIBUTES) }
-                r.error?.let { append("  failed", SimpleTextAttributes.ERROR_ATTRIBUTES) }
-            }
-            else -> {
-                val method = r.method ?: "GET"
-                append(method.padEnd(7), HttpMethodColors.attributes(method))
-                append(RecordingText.shortUrl(r, kind))
-                r.status?.let { append("  $it", statusAttributes(it)) }
-                if (r.status == null && r.error != null) append("  failed", SimpleTextAttributes.ERROR_ATTRIBUTES)
-            }
-        }
-        append("  ${RecordingText.TIME.format(Date(r.time))}", SimpleTextAttributes.GRAYED_ATTRIBUTES)
-        if (r.durationMs > 0) append("  ${r.durationMs} ms", SimpleTextAttributes.GRAYED_ATTRIBUTES)
-    }
-
-    private fun statusAttributes(status: Int): SimpleTextAttributes {
-        val color = when (status) {
-            in 200..299 -> JBColor(0x2E7D32, 0x6AAB73)
-            in 300..399 -> JBColor(0xB26A00, 0xE0A44D)
-            else -> JBColor(0xC62828, 0xF28B82)
-        }
-        return SimpleTextAttributes(SimpleTextAttributes.STYLE_BOLD, color)
     }
 }
 
@@ -311,27 +348,25 @@ internal object RecordingText {
         return if (kind == RecordingKind.OUTGOING) "${uri.host ?: ""}$path" else path
     }
 
+    /** The Request tab: for HTTP, in `.http` syntax (so it gets that highlighting); for a message, its routing facts. */
     fun request(r: Recording): String = buildString {
         if (r.kind == RecordingKind.MESSAGE) {
-            append("${r.transport} · ${r.destination}\n")
-            if (!r.exchange.isNullOrEmpty()) append("exchange     ${r.exchange}\n")
-            if (!r.routingKey.isNullOrEmpty()) append("routing key  ${r.routingKey}\n")
-            r.contentType?.let { append("content type ${it}\n") }
+            r.exchange?.takeIf { it.isNotEmpty() }?.let { append("exchange      $it\n") }
+            r.routingKey?.takeIf { it.isNotEmpty() }?.let { append("routing key   $it\n") }
+            r.contentType?.let { append("content type  $it\n") }
             r.detail?.let { append("$it\n") }
-            if (r.headers.isNotEmpty()) append("\nHeaders\n").append(r.headers.joinToString("\n") { "${it.first}: ${it.second}" }).append('\n')
+            if (isEmpty()) append("No routing information was recorded.")
             return@buildString
         }
         append("${r.method} ${r.url}\n")
-        r.handler?.let { append("handled by $it\n") }
-        r.client?.let { append("client $it\n") }
-        append("\n")
         r.headers.forEach { append("${it.first}: ${it.second}\n") }
         r.body?.let { append("\n").append(HttpExecutor.pretty(it)).append('\n') }
     }
 
+    /** The Response (or Message) tab: the body, formatted. */
     fun response(r: Recording): String = buildString {
         if (r.kind == RecordingKind.MESSAGE) {
-            append(r.body?.let { HttpExecutor.pretty(it) } ?: "(no body)")
+            append(r.body?.let { HttpExecutor.pretty(it) } ?: "No body")
             r.error?.let { append("\n\nThe listener failed: $it") }
             return@buildString
         }
@@ -339,10 +374,21 @@ internal object RecordingText {
             append(r.error ?: "No response was recorded")
             return@buildString
         }
-        append("${r.status} ${HttpExecutor.reason(r.status)}\n".replace("  ", " "))
-        r.responseHeaders.forEach { append("${it.first}: ${it.second}\n") }
-        r.responseBody?.let { append("\n").append(HttpExecutor.pretty(it)).append('\n') }
-        r.error?.let { append("\n$it") }
+        append(r.responseBody?.let { HttpExecutor.pretty(it) } ?: "No body")
+        r.error?.let { append("\n\n$it") }
+    }
+
+    /** The Headers tab. */
+    fun headers(r: Recording): String = buildString {
+        fun section(title: String, list: List<Pair<String, String>>) {
+            if (list.isEmpty()) return
+            if (isNotEmpty()) append('\n')
+            append(title).append('\n')
+            list.forEach { append("  ${it.first}: ${it.second}\n") }
+        }
+        section(if (r.kind == RecordingKind.MESSAGE) "Message headers" else "Request headers", r.headers)
+        section("Response headers", r.responseHeaders)
+        if (isEmpty()) append("No headers were recorded.")
     }
 
     /** The request as a `.http` request; masked headers become a placeholder comment. */

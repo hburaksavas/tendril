@@ -78,6 +78,7 @@ private class ActuatorPanel(private val project: Project) : JPanel(BorderLayout(
     private val url = SearchTextField(false).apply {
         text = defaultUrl()
         toolTipText = "Actuator base URL (management.endpoints.web.base-path)"
+        textEditor.emptyText.text = "Actuator address, for example http://localhost:8080/actuator"
     }
     private val tabs = JBTabbedPane()
     private val views = listOf(
@@ -103,7 +104,8 @@ private class ActuatorPanel(private val project: Project) : JPanel(BorderLayout(
                 (LOG_LEVELS.map { level -> loggerAction("Set $level", name, level) } +
                     loggerAction("Reset (inherit from parent)", name, null))
         }
-        views[0].setMessage("Press Refresh (or Enter in the URL field) to read the running application")
+        views.forEach { it.retry = ::refreshAll }
+        views[0].setMessage("Start the application, then read it", canRetry = true)
     }
 
     override fun dispose() {}
@@ -128,7 +130,7 @@ private class ActuatorPanel(private val project: Project) : JPanel(BorderLayout(
                 view.loaded = true
                 result.fold(
                     { view.show(it) },
-                    { view.setMessage(describe(it, base, view.path)) },
+                    { view.setMessage(describe(it, base, view.path), canRetry = true) },
                 )
             }, ModalityState.any())
         }
@@ -256,9 +258,14 @@ private class ActuatorView(
         component.add(JBScrollPane(tree), BorderLayout.CENTER)
     }
 
-    fun setMessage(text: String) {
+    /** What to do when the user asks to try again from the empty text; set by the panel. */
+    var retry: () -> Unit = {}
+
+    fun setMessage(text: String, canRetry: Boolean = false) {
         nodes = emptyList()
-        tree.emptyText.text = text
+        tree.emptyText.clear()
+        tree.emptyText.appendText(text)
+        if (canRetry) tree.emptyText.appendLine("Try again", SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES) { retry() }
         rebuild()
     }
 

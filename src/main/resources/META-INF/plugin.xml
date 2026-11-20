@@ -73,13 +73,13 @@
         <toolWindow id="Recordings" anchor="bottom" icon="/icons/recordings.svg"
                     factoryClass="dev.tendril.recordings.RecordingsToolWindowFactory"/>
         <notificationGroup id="Tendril" displayType="BALLOON"/>
-        <toolWindow id="Spring Beans" anchor="right" icon="AllIcons.Nodes.Class"
+        <toolWindow id="Spring Beans" anchor="right" icon="/icons/beans.svg"
                     factoryClass="dev.tendril.beans.BeansToolWindowFactory"/>
-        <toolWindow id="Spring Endpoints" anchor="right" icon="AllIcons.Nodes.Services"
+        <toolWindow id="Spring Endpoints" anchor="right" icon="/icons/endpoints.svg"
                     factoryClass="dev.tendril.endpoints.EndpointsToolWindowFactory"/>
         <codeInsight.lineMarkerProvider language="JAVA"
                                         implementationClass="dev.tendril.feign.FeignLineMarkerProvider"/>
-        <toolWindow id="Spring Actuator" anchor="right" icon="AllIcons.Actions.Execute"
+        <toolWindow id="Spring Actuator" anchor="right" icon="/icons/actuator.svg"
                     factoryClass="dev.tendril.actuator.ActuatorToolWindowFactory"/>
     </extensions>
 

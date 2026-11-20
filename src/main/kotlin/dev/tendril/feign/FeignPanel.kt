@@ -17,17 +17,22 @@ import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.pom.Navigatable
 import com.intellij.ui.*
+import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.treeStructure.Tree
 import com.intellij.util.concurrency.AppExecutorUtil
 import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.UIUtil
 import com.intellij.util.ui.tree.TreeUtil
 import dev.tendril.config.ConfigProfiles
 import dev.tendril.config.TendrilSettings
 import dev.tendril.endpoints.EndpointRequests
-import dev.tendril.endpoints.HttpMethodColors
 import dev.tendril.endpoints.toolbarOf
 import dev.tendril.http.RequestHost
+import dev.tendril.ui.Fragment
+import dev.tendril.ui.Palette
+import dev.tendril.ui.PainterTreeRenderer
+import dev.tendril.ui.RowPainter
 import java.awt.BorderLayout
 import java.awt.FlowLayout
 import java.awt.datatransfer.StringSelection
@@ -56,13 +61,20 @@ internal class FeignPanel(
     private val tree = Tree(treeModel)
     private val search = SearchTextField()
     private val profiles = ComboBox<String>()
+    private val status = JBLabel().apply {
+        foreground = JBColor.GRAY
+        font = UIUtil.getLabelFont(UIUtil.FontSize.SMALL)
+        border = JBUI.Borders.empty(3, 10)
+    }
+    private val renderer = PainterTreeRenderer(::bindRow)
     private var all: List<FeignClientInfo> = emptyList()
     private var updatingProfiles = false
 
     init {
         tree.isRootVisible = false
         tree.showsRootHandles = true
-        tree.cellRenderer = FeignRenderer()
+        tree.cellRenderer = renderer
+        search.textEditor.emptyText.text = "Filter by client, address or path"
         tree.addMouseListener(object : MouseAdapter() {
             override fun mouseClicked(e: MouseEvent) {
                 if (e.clickCount == 2) navigate()
@@ -108,6 +120,7 @@ internal class FeignPanel(
         }
         add(top, BorderLayout.NORTH)
         add(JBScrollPane(tree), BorderLayout.CENTER)
+        add(status, BorderLayout.SOUTH)
     }
 
     override fun dispose() {}
@@ -120,27 +133,47 @@ internal class FeignPanel(
         }
             .inSmartMode(project)
             .expireWith(this)
-            .finishOnUiThread(ModalityState.any()) { (known, infos) ->
-                updatingProfiles = true
-                profiles.removeAllItems()
-                known.forEach { profiles.addItem(it) }
-                profiles.selectedItem = FeignResolver.selectedProfile(project) ?: DEFAULT
-                updatingProfiles = false
-                all = infos
-                onCount(infos.sumOf { it.def.calls.size })
-                applyFilter()
-            }
+            .finishOnUiThread(ModalityState.any()) { (known, infos) -> show(known, infos) }
             .submit(AppExecutorUtil.getAppExecutorService())
+    }
+
+    fun show(known: List<String>, infos: List<FeignClientInfo>) {
+        updatingProfiles = true
+        profiles.removeAllItems()
+        known.forEach { profiles.addItem(it) }
+        profiles.selectedItem = FeignResolver.selectedProfile(project) ?: DEFAULT
+        updatingProfiles = false
+        all = infos
+        onCount(infos.sumOf { it.def.calls.size })
+        applyFilter()
     }
 
     private fun applyFilter() {
         val q = search.text.trim().lowercase()
         val empty = tree.emptyText
+        empty.clear()
         if (all.isEmpty()) {
-            empty.setText("No Feign clients found").appendLine("Interfaces annotated with @FeignClient are listed here.")
+            empty.appendText("No Feign clients found")
+            empty.appendLine("Interfaces annotated with @FeignClient are listed here.")
+            empty.appendLine("Scan again", SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES) { refresh() }
         } else {
-            empty.setText("Nothing matches \"${search.text.trim()}\"")
+            empty.appendText("Nothing matches \"${search.text.trim()}\"")
+            empty.appendLine("Clear the filter", SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES) { search.text = "" }
         }
+
+        val calls = all.flatMap { it.def.calls }
+        renderer.painter.font = tree.font
+        renderer.painter.badgeWidth = renderer.painter.badgeColumn(calls.map { it.httpMethod } + "DELETE")
+        renderer.painter.primaryColumn = minOf(
+            JBUI.scale(380),
+            all.flatMap { i -> i.def.calls.map { renderer.painter.measure(Palette.path(FeignRequests.path(i, it))) } }.maxOrNull() ?: 0,
+        )
+        val unresolved = all.count { it.resolution.url == null }
+        status.text = buildString {
+            append("${all.size} clients   ${calls.size} calls")
+            if (unresolved > 0) append("   $unresolved without an address")
+        }
+
         root.removeAllChildren()
         for (info in all) {
             val calls = info.def.calls.filter { c ->
@@ -154,6 +187,35 @@ internal class FeignPanel(
         }
         treeModel.reload()
         TreeUtil.expandAll(tree)
+    }
+
+    private fun bindRow(p: RowPainter, item: Any?) {
+        when (item) {
+            is ClientNode -> {
+                val info = item.info
+                p.icon = AllIcons.Nodes.Interface
+                val url = info.resolution.url
+                if (url != null) {
+                    p.primary = listOf(Fragment(info.name.ifBlank { info.def.className }, bold = true), Fragment("   "), Fragment(url))
+                    p.secondary = listOf(Fragment(info.resolution.source, Palette.MUTED))
+                } else {
+                    val missing = info.resolution.unresolved.joinToString(", ") { "\${$it}" }
+                    p.primary = listOf(
+                        Fragment(info.name.ifBlank { info.def.className }, bold = true), Fragment("   "),
+                        Fragment("No address", Palette.FAILED, bold = true),
+                    )
+                    p.secondary = listOf(
+                        Fragment(if (missing.isEmpty()) "Right-click to set one." else "Undefined: $missing. Right-click to set one.", Palette.MUTED),
+                    )
+                }
+            }
+            is CallNode -> {
+                p.badge = item.call.httpMethod
+                p.badgeColor = Palette.method(item.call.httpMethod)
+                p.primary = Palette.path(FeignRequests.path(item.info, item.call))
+                p.secondary = listOf(Fragment(item.call.methodName, Palette.MUTED))
+            }
+        }
     }
 
     private fun selected(): Any? = (tree.lastSelectedPathComponent as? DefaultMutableTreeNode)?.userObject
@@ -299,31 +361,3 @@ internal class FeignPanel(
     }
 }
 
-private class FeignRenderer : ColoredTreeCellRenderer() {
-    override fun customizeCellRenderer(
-        tree: JTree, value: Any?, selected: Boolean, expanded: Boolean, leaf: Boolean, row: Int, hasFocus: Boolean,
-    ) {
-        when (val item = (value as? DefaultMutableTreeNode)?.userObject) {
-            is ClientNode -> {
-                val info = item.info
-                icon = AllIcons.Nodes.Interface
-                append(info.name.ifBlank { info.def.className }, SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
-                val url = info.resolution.url
-                if (url != null) {
-                    append("   $url")
-                    append("   ${info.resolution.source}", SimpleTextAttributes.GRAYED_ATTRIBUTES)
-                } else {
-                    append("   No address", SimpleTextAttributes.ERROR_ATTRIBUTES)
-                    val missing = info.resolution.unresolved.joinToString(", ") { "\${$it}" }
-                    val hint = if (missing.isEmpty()) "Right-click to set one." else "Undefined: $missing. Right-click to set an address."
-                    append("   $hint", SimpleTextAttributes.GRAYED_ATTRIBUTES)
-                }
-            }
-            is CallNode -> {
-                append(item.call.httpMethod.padEnd(7), HttpMethodColors.attributes(item.call.httpMethod))
-                append(FeignRequests.path(item.info, item.call))
-                append("   ${item.call.methodName}", SimpleTextAttributes.GRAYED_ATTRIBUTES)
-            }
-        }
-    }
-}

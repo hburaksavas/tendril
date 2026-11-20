@@ -11,7 +11,12 @@ import com.intellij.ui.SimpleColoredComponent
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTabbedPane
-import com.intellij.ui.components.JBTextArea
+import com.intellij.openapi.actionSystem.CommonShortcuts
+import com.intellij.openapi.editor.LogicalPosition
+import com.intellij.openapi.fileTypes.PlainTextFileType
+import com.intellij.openapi.project.DumbAwareAction
+import dev.tendril.ui.Editors
+import dev.tendril.ui.Palette
 import com.intellij.util.ui.JBUI
 import java.awt.BorderLayout
 import java.awt.FlowLayout
@@ -34,19 +39,15 @@ internal interface RequestHost {
  * Ctrl+Enter sends the request under the caret.
  */
 internal class HttpRequestPanel(private val project: Project, private val onClose: () -> Unit) : JPanel(BorderLayout()) {
-    private val request = JBTextArea(8, 60)
+    private val request = Editors.editable(project, HttpFileType)
     private val environments = ComboBox<String>()
     private val send = JButton("Send", AllIcons.Actions.Execute)
     private val status = SimpleColoredComponent()
-    private val body = readOnlyArea()
-    private val headers = readOnlyArea()
+    private val body = Editors.viewer(project)
+    private val headers = Editors.viewer(project)
 
     init {
-        request.font = Font(Font.MONOSPACED, Font.PLAIN, 13)
-        request.margin = JBUI.insets(4, 6)
-        request.registerKeyboardAction(
-            { send() }, KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, InputEvent.CTRL_DOWN_MASK), JComponent.WHEN_FOCUSED,
-        )
+        DumbAwareAction.create { send() }.registerCustomShortcutSet(CommonShortcuts.CTRL_ENTER, request)
         send.toolTipText = "Send the request under the caret (Ctrl+Enter)"
         send.addActionListener { send() }
         reloadEnvironments()
@@ -76,15 +77,15 @@ internal class HttpRequestPanel(private val project: Project, private val onClos
         }
 
         val tabs = JBTabbedPane()
-        tabs.addTab("Body", JBScrollPane(body))
-        tabs.addTab("Headers", JBScrollPane(headers))
+        tabs.addTab("Body", body)
+        tabs.addTab("Headers", headers)
         val response = JPanel(BorderLayout()).apply {
             add(status.apply { border = JBUI.Borders.empty(4, 8) }, BorderLayout.NORTH)
             add(tabs, BorderLayout.CENTER)
         }
 
         val splitter = OnePixelSplitter(true, "tendril.http.splitter", 0.4f)
-        splitter.firstComponent = JBScrollPane(request)
+        splitter.firstComponent = request
         splitter.secondComponent = response
         add(header, BorderLayout.NORTH)
         add(splitter, BorderLayout.CENTER)
@@ -97,7 +98,8 @@ internal class HttpRequestPanel(private val project: Project, private val onClos
         val known = selectedVariables().keys + HttpRequestText.fileVariables(text).keys
         val missing = HttpRequestText.variables(text).filter { it !in known }
         request.text = missing.joinToString("") { "@$it = \n" } + text
-        runCatching { request.caretPosition = request.getLineStartOffset(missing.size) }
+        // the caret goes to the first request line, below the variable lines to fill in
+        request.editor?.caretModel?.moveToLogicalPosition(LogicalPosition(missing.size, 0))
         request.requestFocusInWindow()
     }
 
@@ -117,7 +119,7 @@ internal class HttpRequestPanel(private val project: Project, private val onClos
 
     private fun send() {
         val text = request.text
-        val line = runCatching { request.getLineOfOffset(request.caretPosition) }.getOrDefault(0)
+        val line = request.editor?.caretModel?.logicalPosition?.line ?: 0
         val variables = selectedVariables() + HttpRequestText.fileVariables(text)
         val parsed = HttpRequestText.parse(HttpRequestText.block(text, line), variables).getOrElse {
             showError(it.message ?: "The request could not be read")
@@ -151,24 +153,23 @@ internal class HttpRequestPanel(private val project: Project, private val onClos
 
     private fun show(r: HttpResult) {
         val color = when (r.status) {
-            in 200..299 -> JBColor(0x2E7D32, 0x6AAB73)
-            in 300..399 -> JBColor(0xB26A00, 0xE0A44D)
-            else -> JBColor(0xC62828, 0xF28B82)
+            in 200..299 -> Palette.OK
+            in 300..399 -> Palette.REDIRECT
+            else -> Palette.FAILED
         }
         status.clear()
         status.append("${r.status} ${HttpExecutor.reason(r.status)}".trim(), SimpleTextAttributes(SimpleTextAttributes.STYLE_BOLD, color))
         status.append("   ${r.millis} ms   ${size(r.bytes)}", SimpleTextAttributes.GRAYED_ATTRIBUTES)
-        body.text = HttpExecutor.pretty(r.body).take(MAX_BODY)
-        body.caretPosition = 0
+        val pretty = HttpExecutor.pretty(r.body).take(MAX_BODY)
+        Editors.show(body, pretty, Editors.typeOf(pretty))
         headers.text = r.headers.joinToString("\n") { "${it.first}: ${it.second}" }
-        headers.caretPosition = 0
     }
 
     private fun showError(message: String) {
         status.clear()
         status.append(message, SimpleTextAttributes.ERROR_ATTRIBUTES)
-        body.text = ""
-        headers.text = ""
+        Editors.show(body, "", PlainTextFileType.INSTANCE)
+        Editors.show(headers, "", PlainTextFileType.INSTANCE)
     }
 
     private fun showHint(message: String) {
@@ -177,12 +178,6 @@ internal class HttpRequestPanel(private val project: Project, private val onClos
     }
 
     private fun size(bytes: Int) = if (bytes < 1024) "$bytes B" else "%.1f KB".format(bytes / 1024.0)
-
-    private fun readOnlyArea() = JBTextArea().apply {
-        isEditable = false
-        font = Font(Font.MONOSPACED, Font.PLAIN, 13)
-        margin = JBUI.insets(4, 6)
-    }
 
     private companion object {
         const val NONE = "(none)"

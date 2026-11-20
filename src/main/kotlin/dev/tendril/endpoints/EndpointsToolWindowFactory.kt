@@ -20,14 +20,20 @@ import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.pom.Navigatable
 import com.intellij.ui.*
+import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTabbedPane
 import com.intellij.ui.content.ContentFactory
 import com.intellij.ui.treeStructure.Tree
 import com.intellij.util.concurrency.AppExecutorUtil
 import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.UIUtil
 import com.intellij.util.ui.tree.TreeUtil
 import dev.tendril.feign.FeignPanel
+import dev.tendril.ui.Fragment
+import dev.tendril.ui.Palette
+import dev.tendril.ui.PainterTreeRenderer
+import dev.tendril.ui.RowPainter
 import dev.tendril.http.HttpRequestPanel
 import dev.tendril.http.RequestHost
 import java.awt.BorderLayout
@@ -151,7 +157,14 @@ internal class EndpointsPanel(
     private val tree = Tree(treeModel)
     private val search = SearchTextField()
     private var all: List<Endpoint> = emptyList()
+    private var baseUrl: String? = null
     private val props = PropertiesComponent.getInstance(project)
+    private val status = JBLabel().apply {
+        foreground = JBColor.GRAY
+        font = UIUtil.getLabelFont(UIUtil.FontSize.SMALL)
+        border = JBUI.Borders.empty(3, 10)
+    }
+    private val renderer = PainterTreeRenderer(::bindRow)
 
     var grouped: Boolean
         get() = props.getBoolean(GROUPED_KEY, false)
@@ -171,7 +184,8 @@ internal class EndpointsPanel(
     init {
         tree.isRootVisible = false
         tree.showsRootHandles = true
-        tree.cellRenderer = EndpointRenderer()
+        tree.cellRenderer = renderer
+        search.textEditor.emptyText.text = "Filter by path, method or controller"
         tree.addMouseListener(object : MouseAdapter() {
             override fun mouseClicked(e: MouseEvent) {
                 if (e.clickCount == 2) navigate()
@@ -201,6 +215,7 @@ internal class EndpointsPanel(
         }
         add(top, BorderLayout.NORTH)
         add(JBScrollPane(tree), BorderLayout.CENTER)
+        add(status, BorderLayout.SOUTH)
 
         project.messageBus.connect(this).subscribe(
             FileEditorManagerListener.FILE_EDITOR_MANAGER,
@@ -215,15 +230,18 @@ internal class EndpointsPanel(
     override fun dispose() {}
 
     fun refresh() {
-        ReadAction.nonBlocking<List<Endpoint>> { EndpointScanner.cached(project) }
+        ReadAction.nonBlocking<Pair<List<Endpoint>, String>> { EndpointScanner.cached(project) to EndpointRequests.baseUrl(project) }
             .inSmartMode(project)
             .expireWith(this)
-            .finishOnUiThread(ModalityState.any()) {
-                all = it
-                onCount(it.size)
-                applyFilter()
-            }
+            .finishOnUiThread(ModalityState.any()) { (endpoints, base) -> show(endpoints, base) }
             .submit(AppExecutorUtil.getAppExecutorService())
+    }
+
+    fun show(endpoints: List<Endpoint>, baseUrl: String? = null) {
+        all = endpoints
+        this.baseUrl = baseUrl
+        onCount(endpoints.size)
+        applyFilter()
     }
 
     private fun applyFilter() {
@@ -236,11 +254,38 @@ internal class EndpointsPanel(
         }
 
         val empty = tree.emptyText
+        empty.clear()
         when {
-            all.isEmpty() -> empty.setText("No endpoints found").appendLine("Classes annotated with @RestController or @Controller are listed here.")
-            focusMode && activeFile == null -> empty.setText("No editor is open").appendLine("Open a controller to see its endpoints.")
-            focusMode && shown.isEmpty() -> empty.setText("No endpoints in ${activeFile?.name}").appendLine("Turn off focus mode to see all endpoints.")
-            else -> empty.setText("Nothing matches \"${search.text.trim()}\"")
+            all.isEmpty() -> {
+                empty.appendText("No endpoints found")
+                empty.appendLine("Classes annotated with @RestController or @Controller are listed here.")
+                empty.appendLine("Scan again", SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES) { refresh() }
+            }
+            focusMode && activeFile == null -> {
+                empty.appendText("No editor is open")
+                empty.appendLine("Open a controller to see its endpoints.")
+                empty.appendLine("Show all endpoints", SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES) { focusMode = false }
+            }
+            focusMode && shown.isEmpty() -> {
+                empty.appendText("No endpoints in ${activeFile?.name}")
+                empty.appendLine("Switch to another file, or")
+                empty.appendLine("show all endpoints", SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES) { focusMode = false }
+            }
+            else -> {
+                empty.appendText("Nothing matches \"${search.text.trim()}\"")
+                empty.appendLine("Clear the filter", SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES) { search.text = "" }
+            }
+        }
+
+        // columns: one badge width for the verbs in use, one path width so the controller column lines up
+        renderer.painter.font = tree.font
+        renderer.painter.badgeWidth = renderer.painter.badgeColumn(all.map { it.httpMethod } + "DELETE")
+        renderer.painter.primaryColumn = minOf(
+            JBUI.scale(420), shown.maxOfOrNull { renderer.painter.measure(Palette.path(it.path)) } ?: 0,
+        )
+        status.text = buildString {
+            append(if (shown.size == all.size) "${all.size} endpoints" else "${shown.size} of ${all.size} endpoints")
+            baseUrl?.let { append("   Base address $it") }
         }
 
         root.removeAllChildren()
@@ -255,6 +300,22 @@ internal class EndpointsPanel(
         }
         treeModel.reload()
         if (grouped) TreeUtil.expandAll(tree)
+    }
+
+    private fun bindRow(p: RowPainter, item: Any?) {
+        when (item) {
+            is Endpoint -> {
+                p.badge = item.httpMethod
+                p.badgeColor = Palette.method(item.httpMethod)
+                p.primary = Palette.path(item.path)
+                p.secondary = listOf(Fragment("${item.className}.${item.methodName}", Palette.MUTED))
+            }
+            is String -> {
+                p.icon = AllIcons.Nodes.Class
+                p.primary = listOf(Fragment(item, bold = true))
+                p.secondary = listOf(Fragment("${all.count { it.className == item }} endpoints", Palette.MUTED))
+            }
+        }
     }
 
     private fun selectedEndpoint(): Endpoint? =
@@ -308,41 +369,8 @@ internal class EndpointsPanel(
 }
 
 internal object HttpMethodColors {
-    private val GREEN = JBColor(0x2E7D32, 0x6AAB73)
-    private val ORANGE = JBColor(0xB26A00, 0xE0A44D)
-    private val BLUE = JBColor(0x1E66F5, 0x6FA8FF)
-    private val PURPLE = JBColor(0x7E57C2, 0xB39DDB)
-    private val RED = JBColor(0xC62828, 0xF28B82)
+    fun color(method: String): java.awt.Color = Palette.method(method)
 
-    fun attributes(method: String): SimpleTextAttributes {
-        val color = when (method) {
-            "GET" -> GREEN
-            "POST" -> ORANGE
-            "PUT" -> BLUE
-            "PATCH" -> PURPLE
-            "DELETE" -> RED
-            else -> JBColor.GRAY
-        }
-        return SimpleTextAttributes(SimpleTextAttributes.STYLE_BOLD, color)
-    }
-}
-
-private class EndpointRenderer : ColoredTreeCellRenderer() {
-    override fun customizeCellRenderer(
-        tree: JTree, value: Any?, selected: Boolean, expanded: Boolean, leaf: Boolean, row: Int, hasFocus: Boolean,
-    ) {
-        val node = value as? DefaultMutableTreeNode ?: return
-        when (val item = node.userObject) {
-            is Endpoint -> {
-                append(item.httpMethod.padEnd(7), HttpMethodColors.attributes(item.httpMethod))
-                append(item.path)
-                append("   ${item.className}.${item.methodName}", SimpleTextAttributes.GRAYED_ATTRIBUTES)
-            }
-            is String -> {
-                icon = AllIcons.Nodes.Class
-                append(item, SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
-                append("  ${node.childCount}", SimpleTextAttributes.GRAYED_ATTRIBUTES)
-            }
-        }
-    }
+    fun attributes(method: String): SimpleTextAttributes =
+        SimpleTextAttributes(SimpleTextAttributes.STYLE_BOLD, Palette.method(method))
 }
