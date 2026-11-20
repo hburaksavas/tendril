@@ -54,7 +54,7 @@ Target: IntelliJ IDEA 2025.3+ (unified distribution). Stack: Kotlin, IntelliJ Pl
 - [ ] Feign recordings served as stubs
 
 ## Quality (alongside every phase)
-- [ ] Automated tests (light fixture tests for completion, inspections, markers)
+- [x] Automated tests: unit tests, light fixture tests (scanners, Feign resolver, navigation, inspections) and recorder tests (121 so far; completion and gutter markers are not covered yet)
 - [ ] Settings page for the ignore list
 - [ ] CI build, Marketplace-ready metadata
 

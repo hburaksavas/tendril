@@ -19,7 +19,13 @@ dependencies {
         bundledPlugin("org.jetbrains.plugins.yaml")
         bundledPlugin("org.jetbrains.idea.maven")
         testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform)
+        testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Plugin.Java)
     }
+}
+
+dependencies {
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.opentest4j:opentest4j:1.3.0")
 }
 
 kotlin { jvmToolchain(21) }

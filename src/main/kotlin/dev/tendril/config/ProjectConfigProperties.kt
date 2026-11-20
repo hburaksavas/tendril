@@ -109,9 +109,7 @@ object ProjectConfigProperties {
     }
 
     private fun prefixOf(annotation: PsiAnnotation?): String =
-        annotation?.let {
-            AnnotationUtil.getStringAttributeValue(it, "prefix") ?: AnnotationUtil.getStringAttributeValue(it, "value")
-        }.orEmpty()
+        annotation?.firstNonBlank("prefix", "value").orEmpty()
 
     private fun collect(
         cls: PsiClass,

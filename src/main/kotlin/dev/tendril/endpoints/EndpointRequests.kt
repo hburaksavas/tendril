@@ -4,6 +4,7 @@ import com.intellij.lang.properties.psi.Property
 import com.intellij.openapi.project.Project
 import com.intellij.psi.*
 import dev.tendril.config.ConfigNavigation
+import dev.tendril.config.firstNonBlank
 import org.jetbrains.yaml.psi.YAMLKeyValue
 
 /** Turns an [Endpoint] into something you can send: URL, cURL command, or an `.http` request. Needs a read action. */
@@ -73,9 +74,7 @@ object EndpointRequests {
         method ?: return ""
         val names = method.parameterList.parameters.mapNotNull { p ->
             val ann = p.getAnnotation(REQUEST_PARAM) ?: return@mapNotNull null
-            com.intellij.codeInsight.AnnotationUtil.getStringAttributeValue(ann, "value")
-                ?: com.intellij.codeInsight.AnnotationUtil.getStringAttributeValue(ann, "name")
-                ?: p.name
+            ann.firstNonBlank("value", "name") ?: p.name
         }
         return if (names.isEmpty()) "" else names.joinToString("&", prefix = "?") { "$it=value" }
     }

@@ -33,3 +33,16 @@ tasks.jar {
         )
     }
 }
+
+dependencies {
+    testImplementation(platform("org.junit:junit-bom:5.11.4"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    // ControlServer mentions ApplicationContext in its signature
+    testRuntimeOnly(platform("org.springframework.boot:spring-boot-dependencies:3.5.7"))
+    testRuntimeOnly("org.springframework:spring-context")
+}
+
+tasks.test {
+    useJUnitPlatform()
+}

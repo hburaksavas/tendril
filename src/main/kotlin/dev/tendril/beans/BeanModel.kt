@@ -1,6 +1,7 @@
 package dev.tendril.beans
 
 import com.intellij.codeInsight.AnnotationUtil
+import dev.tendril.config.firstNonBlank
 import com.intellij.lang.java.JavaLanguage
 import com.intellij.openapi.project.Project
 import com.intellij.psi.*
@@ -202,9 +203,7 @@ private object BeanModelBuilder {
         val methodBeans = mutableListOf<Pair<PsiMethod, BeanDef>>()
         for (m in beanMethods) {
             val type = (m.returnType as? PsiClassType)?.resolve() ?: continue
-            val explicit = m.getAnnotation(SpringNames.BEAN)?.let {
-                AnnotationUtil.getStringAttributeValue(it, "name") ?: AnnotationUtil.getStringAttributeValue(it, "value")
-            }
+            val explicit = m.getAnnotation(SpringNames.BEAN)?.firstNonBlank("name", "value")
             val bean = BeanDef(
                 explicit ?: m.name, type, m, "@Bean",
                 m.getAnnotation(SpringNames.PRIMARY) != null, isConditional(m),

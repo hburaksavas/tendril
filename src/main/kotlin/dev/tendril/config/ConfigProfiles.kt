@@ -15,11 +15,11 @@ import org.jetbrains.yaml.psi.YAMLKeyValue
 object ConfigProfiles {
     private val PROFILE_FILE = Regex("(?:application|bootstrap)-(.+)\\.(?:properties|ya?ml)")
 
-    /** Keys whose values are profile names. */
+    /** Keys whose values are profile names, in relaxed-normalized form (see [MetadataIndex.normalize]: dots stay). */
     val PROFILE_KEYS = setOf(
-        "springprofilesactive", "springprofilesinclude", "springprofilesdefault", "springconfigactivateonprofile",
+        "spring.profiles.active", "spring.profiles.include", "spring.profiles.default", "spring.config.activate.onprofile",
     )
-    private val DOCUMENT_PROFILE_KEYS = setOf("springconfigactivateonprofile", "springprofiles")
+    private val DOCUMENT_PROFILE_KEYS = setOf("spring.config.activate.onprofile", "spring.profiles")
 
     /** Profile that [element]'s config section is limited to, or null for the default (always active) section. */
     fun profileOf(element: PsiElement): String? {

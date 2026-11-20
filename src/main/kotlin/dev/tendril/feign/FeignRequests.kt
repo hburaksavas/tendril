@@ -1,7 +1,7 @@
 package dev.tendril.feign
 
-import com.intellij.codeInsight.AnnotationUtil
 import com.intellij.psi.PsiMethod
+import dev.tendril.config.firstNonBlank
 import dev.tendril.endpoints.EndpointRequests
 import dev.tendril.endpoints.EndpointScanner
 
@@ -44,9 +44,7 @@ object FeignRequests {
     private fun headers(method: PsiMethod?): List<Pair<String, String>> =
         method?.parameterList?.parameters.orEmpty().mapNotNull { p ->
             val ann = p.getAnnotation(REQUEST_HEADER) ?: return@mapNotNull null
-            val name = AnnotationUtil.getStringAttributeValue(ann, "value")
-                ?: AnnotationUtil.getStringAttributeValue(ann, "name")
-                ?: p.name
+            val name = ann.firstNonBlank("value", "name") ?: p.name
             name to "{{${name.replace(Regex("[^A-Za-z0-9]+"), "_")}}}"
         }
 
