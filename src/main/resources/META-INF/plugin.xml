@@ -26,18 +26,24 @@
                          level="WEAK WARNING" shortName="TendrilUnknownYamlKey"
                          displayName="Unknown Spring Boot property"
                          implementationClass="dev.tendril.config.UnknownYamlKeyInspection"/>
+        <completion.contributor language="kotlin"
+                                implementationClass="dev.tendril.config.ValuePlaceholderCompletionContributor"/>
         <completion.contributor language="JAVA"
                                 implementationClass="dev.tendril.config.ValuePlaceholderCompletionContributor"/>
-        <localInspection language="JAVA" groupName="Tendril" enabledByDefault="true"
+        <localInspection language="UAST" groupName="Tendril" enabledByDefault="true"
                          level="WEAK WARNING" shortName="TendrilUnresolvedValueKey"
                          displayName="Unresolved configuration key in @Value"
                          implementationClass="dev.tendril.config.UnresolvedValueKeyInspection"/>
-        <localInspection language="JAVA" groupName="Tendril" enabledByDefault="true"
+        <localInspection language="UAST" groupName="Tendril" enabledByDefault="true"
                          level="WARNING" shortName="TendrilMissingRequiredProperty"
                          displayName="Required configuration property is not defined"
                          implementationClass="dev.tendril.config.MissingRequiredPropertyInspection"/>
+        <codeInsight.lineMarkerProvider language="kotlin"
+                                        implementationClass="dev.tendril.beans.BeanLineMarkerProvider"/>
         <codeInsight.lineMarkerProvider language="JAVA"
                                         implementationClass="dev.tendril.beans.BeanLineMarkerProvider"/>
+        <codeInsight.lineMarkerProvider language="kotlin"
+                                        implementationClass="dev.tendril.config.CodeToConfigLineMarkerProvider"/>
         <codeInsight.lineMarkerProvider language="JAVA"
                                         implementationClass="dev.tendril.config.CodeToConfigLineMarkerProvider"/>
         <codeInsight.lineMarkerProvider language="yaml"
@@ -45,20 +51,22 @@
         <codeInsight.lineMarkerProvider language="Properties"
                                         implementationClass="dev.tendril.config.ConfigKeyLineMarkerProvider"/>
         <gotoDeclarationHandler implementation="dev.tendril.config.ConfigKeyGotoDeclarationHandler"/>
-        <psi.referenceContributor language="JAVA"
+        <psi.referenceContributor language="UAST"
                                   implementation="dev.tendril.config.ValuePlaceholderReferenceContributor"/>
+        <codeInsight.lineMarkerProvider language="kotlin"
+                                        implementationClass="dev.tendril.beans.BeanUsagesLineMarkerProvider"/>
         <codeInsight.lineMarkerProvider language="JAVA"
                                         implementationClass="dev.tendril.beans.BeanUsagesLineMarkerProvider"/>
-        <localInspection language="JAVA" groupName="Tendril" enabledByDefault="true" level="WEAK WARNING"
+        <localInspection language="UAST" groupName="Tendril" enabledByDefault="true" level="WEAK WARNING"
                          shortName="TendrilFieldInjection" displayName="Field injection"
                          implementationClass="dev.tendril.beans.FieldInjectionInspection"/>
-        <localInspection language="JAVA" groupName="Tendril" enabledByDefault="true" level="WEAK WARNING"
+        <localInspection language="UAST" groupName="Tendril" enabledByDefault="true" level="WEAK WARNING"
                          shortName="TendrilNoBeanFound" displayName="No bean of the injected type"
                          implementationClass="dev.tendril.beans.NoBeanFoundInspection"/>
-        <localInspection language="JAVA" groupName="Tendril" enabledByDefault="true" level="WARNING"
+        <localInspection language="UAST" groupName="Tendril" enabledByDefault="true" level="WARNING"
                          shortName="TendrilAmbiguousBean" displayName="Multiple beans of the injected type"
                          implementationClass="dev.tendril.beans.AmbiguousBeanInspection"/>
-        <localInspection language="JAVA" groupName="Tendril" enabledByDefault="true" level="WARNING"
+        <localInspection language="UAST" groupName="Tendril" enabledByDefault="true" level="WARNING"
                          shortName="TendrilCircularDependency" displayName="Circular bean dependency"
                          implementationClass="dev.tendril.beans.CircularDependencyInspection"/>
         <searchEverywhereContributor implementation="dev.tendril.endpoints.EndpointSearchContributorFactory"/>
@@ -77,6 +85,8 @@
                     factoryClass="dev.tendril.beans.BeansToolWindowFactory"/>
         <toolWindow id="Spring Endpoints" anchor="right" icon="/icons/endpoints.svg"
                     factoryClass="dev.tendril.endpoints.EndpointsToolWindowFactory"/>
+        <codeInsight.lineMarkerProvider language="kotlin"
+                                        implementationClass="dev.tendril.feign.FeignLineMarkerProvider"/>
         <codeInsight.lineMarkerProvider language="JAVA"
                                         implementationClass="dev.tendril.feign.FeignLineMarkerProvider"/>
         <toolWindow id="Spring Actuator" anchor="right" icon="/icons/actuator.svg"

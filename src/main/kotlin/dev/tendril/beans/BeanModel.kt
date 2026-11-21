@@ -235,6 +235,10 @@ private object BeanModelBuilder {
         )
 
     private fun collectClassPoints(cls: PsiClass, bean: BeanDef, out: MutableList<InjectionPoint>) {
+        // A class registered only through @ConfigurationProperties gets its values bound (setters, or constructor
+        // binding for records, data classes and @ConstructorBinding): its parameters are properties, not injections.
+        if (bean.label == "@ConfigurationProperties") return
+
         for (field in cls.fields) {
             if (field.hasModifierProperty(PsiModifier.STATIC)) continue
             val viaAutowired = SpringNames.FIELD_INJECT.any { field.getAnnotation(it) != null }

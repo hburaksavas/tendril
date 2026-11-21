@@ -5,9 +5,10 @@ import com.intellij.codeInsight.daemon.RelatedItemLineMarkerProvider
 import com.intellij.codeInsight.navigation.NavigationGutterIconBuilder
 import com.intellij.psi.PsiClass
 import com.intellij.psi.PsiElement
-import com.intellij.psi.PsiIdentifier
 import com.intellij.psi.PsiMethod
+import com.intellij.psi.PsiNameIdentifierOwner
 import dev.tendril.TendrilIcons
+import dev.tendril.javaViewOf
 
 /** Bean definition (stereotype class or @Bean method) -> the fields and parameters it is injected into. */
 class BeanUsagesLineMarkerProvider : RelatedItemLineMarkerProvider() {
@@ -18,11 +19,9 @@ class BeanUsagesLineMarkerProvider : RelatedItemLineMarkerProvider() {
         element: PsiElement,
         result: MutableCollection<in RelatedItemLineMarkerInfo<*>>,
     ) {
-        if (element !is PsiIdentifier) return
-        val owner = element.parent
-        val isDefinition = (owner is PsiClass && owner.nameIdentifier == element) ||
-            (owner is PsiMethod && owner.nameIdentifier == element)
-        if (!isDefinition) return
+        val declaration = element.parent as? PsiNameIdentifierOwner ?: return
+        if (declaration.nameIdentifier != element) return
+        val owner = javaViewOf(declaration)?.takeIf { it is PsiClass || it is PsiMethod } ?: return
 
         val points = BeanModels.get(element.project).injectedInto[owner] ?: return
         if (points.isEmpty()) return

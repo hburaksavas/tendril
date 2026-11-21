@@ -5,6 +5,7 @@ import com.intellij.codeInsight.daemon.RelatedItemLineMarkerInfo
 import com.intellij.codeInsight.daemon.RelatedItemLineMarkerProvider
 import com.intellij.codeInsight.navigation.NavigationGutterIconBuilder
 import com.intellij.icons.AllIcons
+import dev.tendril.javaViewOf
 import com.intellij.psi.*
 import com.intellij.psi.util.CachedValueProvider
 import com.intellij.psi.util.CachedValuesManager
@@ -22,10 +23,11 @@ class BeanLineMarkerProvider : RelatedItemLineMarkerProvider() {
         element: PsiElement,
         result: MutableCollection<in RelatedItemLineMarkerInfo<*>>,
     ) {
-        if (element !is PsiIdentifier) return
-        val type = when (val parent = element.parent) {
-            is PsiField -> if (AnnotationUtil.isAnnotated(parent, INJECT_ANNOTATIONS, 0)) parent.type else null
-            is PsiParameter -> if (isBeanConstructorParam(parent)) parent.type else null
+        val declaration = element.parent as? PsiNameIdentifierOwner ?: return
+        if (declaration.nameIdentifier != element) return
+        val type = when (val variable = javaViewOf(declaration)) {
+            is PsiField -> if (AnnotationUtil.isAnnotated(variable, INJECT_ANNOTATIONS, 0)) variable.type else null
+            is PsiParameter -> if (isBeanConstructorParam(variable)) variable.type else null
             else -> null
         } as? PsiClassType ?: return
 

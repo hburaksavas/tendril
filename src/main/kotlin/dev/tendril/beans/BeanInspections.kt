@@ -2,6 +2,7 @@ package dev.tendril.beans
 
 import com.intellij.codeInsight.intention.preview.IntentionPreviewInfo
 import com.intellij.codeInspection.*
+import com.intellij.lang.java.JavaLanguage
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ProjectFileIndex
@@ -10,22 +11,57 @@ import com.intellij.psi.codeStyle.CodeStyleManager
 import com.intellij.psi.codeStyle.JavaCodeStyleManager
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.search.searches.ClassInheritorsSearch
+import com.intellij.uast.UastHintedVisitorAdapter
+import org.jetbrains.uast.UField
+import org.jetbrains.uast.UParameter
+import org.jetbrains.uast.UVariable
+import org.jetbrains.uast.getContainingUClass
+import org.jetbrains.uast.visitor.AbstractUastNonRecursiveVisitor
 
-/** Base: visits injected fields and constructor / @Bean method parameters that the [BeanModel] knows about. */
-abstract class InjectionPointInspection : LocalInspectionTool() {
+/** The file a (possibly light, Kotlin-backed) element is written in. */
+internal fun PsiElement.sourceFile() = navigationElement.containingFile?.virtualFile ?: containingFile?.virtualFile
+
+/**
+ * Base: visits injected fields and constructor / @Bean method parameters that the [BeanModel] knows about. It works
+ * on UAST, so one implementation serves Java and Kotlin; the model itself is built from the Java view of both.
+ */
+abstract class InjectionPointInspection : AbstractBaseUastLocalInspectionTool() {
 
     final override fun buildVisitor(holder: ProblemsHolder, isOnTheFly: Boolean): PsiElementVisitor =
-        object : JavaElementVisitor() {
-            override fun visitField(field: PsiField) = check(field)
-            override fun visitParameter(parameter: PsiParameter) = check(parameter)
+        UastHintedVisitorAdapter.create(
+            holder.file.language,
+            object : AbstractUastNonRecursiveVisitor() {
+                override fun visitField(node: UField): Boolean {
+                    check(node)
+                    return true
+                }
 
-            private fun check(variable: PsiVariable) {
-                val model = BeanModels.get(variable.project)
-                val point = model.pointByElement[variable] ?: return
-                val identifier = variable.nameIdentifier ?: return
-                inspect(model, point, identifier, holder)
-            }
-        }
+                override fun visitParameter(node: UParameter): Boolean {
+                    check(node)
+                    return true
+                }
+
+                private fun check(node: UVariable) {
+                    val variable = node.javaPsi ?: return
+                    val model = BeanModels.get(variable.project)
+                    val point = model.pointByElement[variable] ?: constructorParameterPoint(model, node) ?: return
+                    val anchor = node.uastAnchor?.sourcePsi ?: return
+                    inspect(model, point, anchor, holder)
+                }
+
+                /**
+                 * A Kotlin `class A(private val dep: Dep)` declares a property and a constructor parameter in one place;
+                 * UAST hands out the property (a field), the bean model knows the parameter.
+                 */
+                private fun constructorParameterPoint(model: BeanModel, node: UVariable): InjectionPoint? {
+                    if (node !is UField) return null
+                    val parameter = node.getContainingUClass()?.methods.orEmpty().filter { it.isConstructor }
+                        .flatMap { it.uastParameters }.firstOrNull { it.name == node.name }?.javaPsi ?: return null
+                    return model.pointByElement[parameter]
+                }
+            },
+            arrayOf(UField::class.java, UParameter::class.java),
+        )
 
     protected abstract fun inspect(model: BeanModel, point: InjectionPoint, at: PsiElement, holder: ProblemsHolder)
 }
@@ -35,10 +71,11 @@ class FieldInjectionInspection : InjectionPointInspection() {
     override fun inspect(model: BeanModel, point: InjectionPoint, at: PsiElement, holder: ProblemsHolder) {
         if (point.kind != InjectionKind.FIELD || !point.viaAutowiredOrInject) return
         val field = point.element as? PsiField ?: return
-        val file = field.containingFile?.virtualFile ?: return
+        val file = field.sourceFile() ?: return
         if (ProjectFileIndex.getInstance(field.project).isInTestSourceContent(file)) return
 
-        val fixes = if (canConvert(field, point)) arrayOf<LocalQuickFix>(ConvertToConstructorInjectionFix()) else emptyArray()
+        // the fix edits Java PSI, so it is only offered in Java files
+        val fixes = if (at.language == JavaLanguage.INSTANCE && canConvert(field, point)) arrayOf<LocalQuickFix>(ConvertToConstructorInjectionFix()) else emptyArray()
         holder.registerProblem(
             at, "Field injection is not recommended; use constructor injection",
             ProblemHighlightType.WEAK_WARNING, *fixes,
@@ -58,7 +95,7 @@ class NoBeanFoundInspection : InjectionPointInspection() {
         if (point.optional || model.candidates(point.target).isNotEmpty()) return
         val target = point.target
         if (target.isEnum || target.isAnnotationType) return
-        val file = target.containingFile?.virtualFile ?: return
+        val file = target.sourceFile() ?: return
         if (!ProjectFileIndex.getInstance(target.project).isInSourceContent(file)) return // may come from auto-configuration
 
         val concrete = !target.isInterface && !target.hasModifierProperty(PsiModifier.ABSTRACT)
@@ -67,7 +104,7 @@ class NoBeanFoundInspection : InjectionPointInspection() {
             ClassInheritorsSearch.search(target, GlobalSearchScope.projectScope(target.project), true).findFirst() != null
         if (!concrete && !implemented) return
 
-        val fixes = if (concrete) arrayOf<LocalQuickFix>(AnnotateAsComponentFix(target)) else emptyArray()
+        val fixes = if (concrete && target.navigationElement.language == JavaLanguage.INSTANCE) arrayOf<LocalQuickFix>(AnnotateAsComponentFix(target)) else emptyArray()
         holder.registerProblem(
             at, "No Spring bean of type '${target.name}' found in the project",
             ProblemHighlightType.WEAK_WARNING, *fixes,

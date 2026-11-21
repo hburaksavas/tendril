@@ -18,6 +18,7 @@ dependencies {
         bundledPlugin("com.intellij.properties")
         bundledPlugin("org.jetbrains.plugins.yaml")
         bundledPlugin("org.jetbrains.idea.maven")
+        bundledPlugin("org.jetbrains.kotlin")
         testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform)
         testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Plugin.Java)
     }

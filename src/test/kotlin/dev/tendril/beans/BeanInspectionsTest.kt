@@ -260,6 +260,21 @@ class BeanInspectionsTest : SpringTestCase() {
         assertTrue(fine.toString(), fine.none { it.contains("Field injection") })
     }
 
+    fun `test constructor parameters of configuration properties classes are bound, not injected`() {
+        myFixture.addClass("package app; public class Security { public String secret; }")
+        val messages = report(
+            "AppProps.java",
+            """
+            package app;
+            import org.springframework.boot.context.properties.ConfigurationProperties;
+            @ConfigurationProperties(prefix = "app")
+            public class AppProps { public AppProps(Security security) {} }
+            """,
+            NoBeanFoundInspection(), AmbiguousBeanInspection(),
+        )
+        assertTrue(messages.toString(), messages.none { it.contains("No Spring bean") || it.contains("Multiple beans") })
+    }
+
     // ---- required configuration ----
 
     private fun required(validated: Boolean = true) = """
