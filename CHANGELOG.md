@@ -4,6 +4,18 @@ All notable changes to Tendril. The section of the version being built becomes t
 
 ## [Unreleased]
 
+### Inlay hints (Java and Kotlin, each switchable under Settings | Editor | Inlay Hints)
+- `@Value("${...}")` shows the value the key has in the config files of the chosen profile (values of keys that look like secrets are hidden)
+- `@FeignClient` shows the address it resolves to
+- `@Scheduled` shows the next run of a `cron` expression, or how often a `fixedRate` / `fixedDelay` fires
+- `@Transactional` shows propagation, access mode and any isolation, timeout or `rollbackFor`
+
+### Inspections
+- `@Transactional` that Spring does not apply: on a private, static or final method or in a final class, a call to a transactional method of the same class (the proxy is bypassed), and a checked exception leaving the method without `rollbackFor` (with a quick fix)
+
+### Recordings
+- Timeline tab for incoming requests: the Feign calls made while serving the request, on one time axis, with the time spent in the application itself
+
 ## [0.1.0]
 
 First release.

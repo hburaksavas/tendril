@@ -168,6 +168,7 @@ internal class RecordingPane(private val project: Project, private val kind: Rec
     private val headers = Editors.viewer(project)
     private val replay = Editors.viewer(project)
     private val details = JBTabbedPane()
+    private val timeline = WaterfallPanel()
     private val replayButton = JButton(if (kind == RecordingKind.MESSAGE) "Republish" else if (kind == RecordingKind.OUTGOING) "Send again" else "Replay")
     private val openButton = JButton("Open in request editor")
     private val hint = JBLabel(" ")
@@ -181,6 +182,8 @@ internal class RecordingPane(private val project: Project, private val kind: Rec
         details.addTab(if (kind == RecordingKind.MESSAGE) "Message" else "Response", response)
         details.addTab("Headers", headers)
         details.addTab("Replay", replay)
+        // where the time of a served request went: the calls made while serving it, on one axis
+        if (kind == RecordingKind.INCOMING) details.addTab("Timeline", JBScrollPane(timeline))
 
         replayButton.addActionListener { replaySelected() }
         openButton.addActionListener { openSelected() }
@@ -289,6 +292,9 @@ internal class RecordingPane(private val project: Project, private val kind: Rec
         Editors.show(response, body, Editors.typeOf(body))
         Editors.show(headers, r?.let { RecordingText.headers(it) }.orEmpty(), PlainTextFileType.INSTANCE)
         Editors.show(replay, "", PlainTextFileType.INSTANCE)
+        if (kind == RecordingKind.INCOMING) {
+            timeline.show(r?.let { Waterfall.build(it, RecordingStore.getInstance(project).snapshot(RecordingKind.OUTGOING)) }.orEmpty())
+        }
     }
 
     private fun canReplay(r: Recording): Boolean = when (kind) {

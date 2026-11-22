@@ -105,6 +105,36 @@
                                         implementationClass="dev.tendril.feign.FeignLineMarkerProvider"/>
         <toolWindow id="Spring Actuator" anchor="right" icon="/icons/actuator.svg"
                     factoryClass="dev.tendril.actuator.ActuatorToolWindowFactory"/>
+
+        <!-- inline text after Spring annotations: resolved @Value, Feign address, next @Scheduled run, @Transactional summary -->
+        <codeInsight.declarativeInlayProvider language="JAVA" isEnabledByDefault="true" group="OTHER_GROUP"
+                                              providerId="tendril.value" bundle="messages.TendrilBundle" nameKey="hints.value.name"
+                                              implementationClass="dev.tendril.hints.ValueHints"/>
+        <codeInsight.declarativeInlayProvider language="kotlin" isEnabledByDefault="true" group="OTHER_GROUP"
+                                              providerId="tendril.value" bundle="messages.TendrilBundle" nameKey="hints.value.name"
+                                              implementationClass="dev.tendril.hints.ValueHints"/>
+        <codeInsight.declarativeInlayProvider language="JAVA" isEnabledByDefault="true" group="OTHER_GROUP"
+                                              providerId="tendril.feign" bundle="messages.TendrilBundle" nameKey="hints.feign.name"
+                                              implementationClass="dev.tendril.hints.FeignHints"/>
+        <codeInsight.declarativeInlayProvider language="kotlin" isEnabledByDefault="true" group="OTHER_GROUP"
+                                              providerId="tendril.feign" bundle="messages.TendrilBundle" nameKey="hints.feign.name"
+                                              implementationClass="dev.tendril.hints.FeignHints"/>
+        <codeInsight.declarativeInlayProvider language="JAVA" isEnabledByDefault="true" group="OTHER_GROUP"
+                                              providerId="tendril.scheduled" bundle="messages.TendrilBundle" nameKey="hints.scheduled.name"
+                                              implementationClass="dev.tendril.hints.ScheduledHints"/>
+        <codeInsight.declarativeInlayProvider language="kotlin" isEnabledByDefault="true" group="OTHER_GROUP"
+                                              providerId="tendril.scheduled" bundle="messages.TendrilBundle" nameKey="hints.scheduled.name"
+                                              implementationClass="dev.tendril.hints.ScheduledHints"/>
+        <codeInsight.declarativeInlayProvider language="JAVA" isEnabledByDefault="true" group="OTHER_GROUP"
+                                              providerId="tendril.transactional" bundle="messages.TendrilBundle" nameKey="hints.transactional.name"
+                                              implementationClass="dev.tendril.hints.TransactionalHints"/>
+        <codeInsight.declarativeInlayProvider language="kotlin" isEnabledByDefault="true" group="OTHER_GROUP"
+                                              providerId="tendril.transactional" bundle="messages.TendrilBundle" nameKey="hints.transactional.name"
+                                              implementationClass="dev.tendril.hints.TransactionalHints"/>
+
+        <localInspection language="UAST" groupName="Tendril" enabledByDefault="true" level="WARNING"
+                         shortName="TendrilTransactionalPitfalls" displayName="@Transactional that Spring will not apply"
+                         implementationClass="dev.tendril.transactions.TransactionalPitfallsInspection"/>
     </extensions>
 
     <actions>
