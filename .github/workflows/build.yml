@@ -28,7 +28,7 @@ jobs:
         run: ./gradlew test buildPlugin --console=plain
 
       - name: Upload the plugin
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: tendril-plugin
           path: build/distributions/*.zip
@@ -37,7 +37,7 @@ jobs:
       # renderings of the tool windows made by UiPreviewTest, handy to look at in a pull request
       - name: Upload the UI previews
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ui-previews
           path: build/ui-preview/*.png
@@ -45,7 +45,7 @@ jobs:
 
       - name: Upload the test reports
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-reports
           path: |
