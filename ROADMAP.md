@@ -56,12 +56,12 @@ Target: IntelliJ IDEA 2025.3+ (unified distribution). Stack: Kotlin, IntelliJ Pl
 ## Kotlin support (measured by KotlinSupportProbe, see build/kotlin-support.txt)
 - [x] Works from Kotlin sources: endpoint scanner and request text, Feign scanner and address resolver, @ConfigurationProperties (data classes, shorthand), @Value on constructor parameters, bean model (stereotypes, @Bean functions, constructor and lateinit field injection), yml to Kotlin navigation
 - [x] Inspections (bean, required property, unresolved key), bean/config/Feign gutter icons, Ctrl+Click from a placeholder or a Feign service name, and placeholder completion run on UAST / Kotlin PSI, so they work in Kotlin files too (KotlinSupportProbe asserts all 25 checks)
-- [ ] Kotlin quick fixes (annotate as @Component, convert to constructor injection) are only offered in Java files
+- [ ] Kotlin quick fixes (annotate as @Component, convert to constructor injection) are only offered in Java files. Feasible; skipped for now
 
 ## Quality (alongside every phase)
 - [x] Automated tests: unit tests, light fixture tests (scanners, Feign resolver, navigation, inspections) and recorder tests (121 so far; completion and gutter markers are not covered yet)
 - [x] Settings page for the ignore list (see Phase 6)
-- [ ] CI build, Marketplace-ready metadata
+- [x] CI build (build, release, verify workflows), Marketplace-ready metadata
 
 ## Last
-- [ ] Spring Initializr project wizard (deliberately postponed)
+- [ ] Spring Initializr project wizard (feasible; deliberately postponed, skipped for now)
