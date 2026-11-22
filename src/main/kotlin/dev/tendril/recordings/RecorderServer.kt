@@ -202,14 +202,15 @@ object RecorderAgent {
         return target
     }
 
-    /** `-javaagent:<jar>=port=...,token=...,project=...` */
-    fun argument(project: Project): String {
+    /** The agent argument as one JVM parameter, unquoted: for a parameter list, which does its own quoting. */
+    fun rawArgument(project: Project): String {
         RecorderServer.getInstance().register(project)
         val jar = jarPath().toString().replace('\\', '/')
-        val settings = RecorderSettings.getInstance()
-        val value = "-javaagent:$jar=port=${RecorderServer.getInstance().port},token=${settings.token},project=${project.locationHash}"
-        return if (' ' in value) "\"$value\"" else value
+        return "-javaagent:$jar=port=${RecorderServer.getInstance().port},token=${RecorderSettings.getInstance().token},project=${project.locationHash}"
     }
+
+    /** `-javaagent:<jar>=port=...,token=...,project=...`, quoted when it contains a space (for a command line). */
+    fun argument(project: Project): String = rawArgument(project).let { if (' ' in it) "\"$it\"" else it }
 
     /** Matches an agent argument written by [argument], whatever the port or token were. */
     val ARGUMENT_PATTERN = Regex("""\"?-javaagent:[^\s"]*tendril-recorder\.jar=[^\s"]*\"?""")

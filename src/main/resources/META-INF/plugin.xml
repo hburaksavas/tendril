@@ -106,6 +106,8 @@
         <toolWindow id="Spring Actuator" anchor="right" icon="/icons/actuator.svg"
                     factoryClass="dev.tendril.actuator.ActuatorToolWindowFactory"/>
 
+        <runConfigurationExtension implementation="dev.tendril.recordings.run.RecorderRunConfigurationExtension"/>
+
         <!-- inline text after Spring annotations: resolved @Value, Feign address, next @Scheduled run, @Transactional summary -->
         <codeInsight.declarativeInlayProvider language="JAVA" isEnabledByDefault="true" group="OTHER_GROUP"
                                               providerId="tendril.value" bundle="messages.TendrilBundle" nameKey="hints.value.name"

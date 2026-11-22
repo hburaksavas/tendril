@@ -4,6 +4,11 @@ All notable changes to Tendril. The section of the version being built becomes t
 
 ## [Unreleased]
 
+## [0.3.0]
+
+### Recordings
+- "Attach the Tendril recorder" checkbox in the Tendril section of every Java-based run configuration (Application, Spring Boot, JUnit, Kotlin, ...), no Maven needed. The agent argument is added when the application starts, not written into the VM options
+
 ## [0.2.0]
 
 ### Inlay hints (Java and Kotlin, each switchable under Settings | Editor | Inlay Hints)
