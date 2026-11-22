@@ -3,8 +3,20 @@
     <name>Tendril</name>
     <vendor>tendril</vendor>
     <description><![CDATA[
-    Spring Boot tooling without an Ultimate subscription: property and value completion,
-    unknown-property inspection, endpoint explorer and bean navigation gutter icons.
+    <p>Spring Boot tooling for IntelliJ IDEA that works without an Ultimate subscription, in Java and Kotlin.</p>
+    <ul>
+        <li><b>Configuration</b>: completion in <code>application*.yml</code> and <code>.properties</code>, unknown and
+            missing-key inspections, and navigation both ways between a key and the code that reads it, aware of profiles
+            and modules.</li>
+        <li><b>Beans</b>: gutter icons between injection points and bean definitions, inspections for missing, ambiguous and
+            circular beans, a Spring Beans tool window.</li>
+        <li><b>Endpoints</b>: the endpoints your application serves and the Feign clients it calls, with the address each
+            client resolves to per profile.</li>
+        <li><b>HTTP client</b>: send requests from <code>.http</code> files or straight from an endpoint or Feign call, with
+            environment variables and a formatted response.</li>
+        <li><b>Running application</b>: an Actuator window (beans, mappings, environment, loggers, conditions) and a recorder
+            that captures incoming requests, Feign calls and Rabbit/Kafka listener input for replay.</li>
+    </ul>
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>
