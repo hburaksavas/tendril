@@ -168,5 +168,17 @@ class UiPreviewTest : SpringTestCase() {
             ),
         )
         UiSnapshot.save(beans, "beans", 820, 300)
+
+        val state = dev.tendril.config.TendrilSettings.getInstance(project).state
+        state.ignoredKeys.addAll(listOf("jwt", "legacy.flag"))
+        state.serviceUrls["credit-service"] = "https://credit.test.example.com"
+        state.serviceUrls["legacy-ledger"] = "http://ledger.internal:8443"
+        state.nameKeyTemplates.add("urls.{name}.base")
+        val page = dev.tendril.settings.TendrilConfigurable(project)
+        UiSnapshot.save(page.createComponent(), "settings", 760, 700)
+        page.disposeUIResources()
+        state.ignoredKeys.clear()
+        state.serviceUrls.clear()
+        state.nameKeyTemplates.clear()
     }
 }

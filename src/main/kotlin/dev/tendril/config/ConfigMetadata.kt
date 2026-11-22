@@ -101,6 +101,7 @@ object ConfigMetadata {
             CachedValueProvider.Result.create(
                 ProjectConfigProperties.scan(project),
                 PsiModificationTracker.getInstance(project).forLanguage(JavaLanguage.INSTANCE),
+                TendrilSettings.getInstance(project).tracker,
             )
         }
 

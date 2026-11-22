@@ -103,7 +103,7 @@ object ProjectConfigProperties {
                     dev.tendril.endpoints.EndpointScanner.attrValues(a, attr).firstOrNull()
                         ?.takeIf { it.isNotBlank() && '$' !in it }
                 } ?: continue
-                for (key in dev.tendril.feign.FeignResolver.addressKeys(name)) sources += ConfigSource(key, cls)
+                for (key in dev.tendril.feign.FeignResolver.addressKeys(project, name)) sources += ConfigSource(key, cls)
             }
         }
     }

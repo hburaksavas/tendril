@@ -47,6 +47,10 @@ object FeignResolver {
         "feign.client.config.{name}.url",
     )
 
+    /** The keys the user added in the settings (tried first), then the built-in [NAME_KEYS]. */
+    fun nameKeys(project: Project): List<String> =
+        TendrilSettings.getInstance(project).state.nameKeyTemplates.map { it.trim() }.filter { "{name}" in it } + NAME_KEYS
+
     fun selectedProfile(project: Project): String? =
         PropertiesComponent.getInstance(project).getValue(PROFILE_KEY)?.takeIf { it.isNotBlank() }
 
@@ -77,7 +81,7 @@ object FeignResolver {
             return FeignResolution(withScheme(it), "Tendril address table for '$name'")
         }
 
-        for (template in NAME_KEYS) {
+        for (template in nameKeys(project)) {
             val key = template.replace("{name}", name)
             val raw = valueFor(ConfigNavigation.allConfigElements(project, key), profile) ?: continue
             val (resolved, unresolved) = substitute(project, raw, profile)
@@ -136,8 +140,8 @@ object FeignResolver {
     }
 
     /** Config keys through which the address of service [name] can be given (well-known names and discovery instances). */
-    fun addressKeys(name: String): List<String> =
-        NAME_KEYS.map { it.replace("{name}", name) } +
+    fun addressKeys(project: Project, name: String): List<String> =
+        nameKeys(project).map { it.replace("{name}", name) } +
             listOf("uri", "host", "port").map { "$SIMPLE_INSTANCES.$name[0].$it" }
 
     /**
@@ -146,7 +150,7 @@ object FeignResolver {
      */
     fun addressElements(project: Project, name: String): List<PsiElement> {
         val out = LinkedHashSet<PsiElement>()
-        for (key in addressKeys(name)) out += ConfigNavigation.allConfigElements(project, key)
+        for (key in addressKeys(project, name)) out += ConfigNavigation.allConfigElements(project, key)
         if (out.isEmpty()) {
             val needle = name.lowercase().filter { it.isLetterOrDigit() }
             if (needle.length >= 3) {

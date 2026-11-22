@@ -49,6 +49,10 @@ class RecorderSettings : PersistentStateComponent<RecorderSettings.State> {
             return state.token
         }
 
+    fun replaceToken(value: String) {
+        state.token = value
+    }
+
     var port: Int
         get() = state.port
         set(value) {

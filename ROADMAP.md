@@ -41,7 +41,7 @@ Target: IntelliJ IDEA 2025.3+ (unified distribution). Stack: Kotlin, IntelliJ Pl
 - [x] Copy URL / cURL / open as `.http` request, gutter icon on Feign methods
 - [x] Generate `http-client.env.json` (address per profile) plus a private token file
 - [x] Built-in HTTP client ("HTTP Requests" tool window): `.http` syntax, `@var = value` and env-file variables, send and read the response, no paid IDE feature needed
-- [ ] Settings page for the service-address table and name key templates
+- [x] Settings page (Settings | Tools | Tendril): ignored keys, service-address table, extra address-key templates, recorder port and token
 
 ## Phase 7 — Recordings (record and replay at runtime)
 - [x] Recorder agent (`recorder` module, bundled in the plugin): a `-javaagent` that Spring Boot picks up as an auto-configuration; works with `spring-boot:run`
@@ -60,7 +60,7 @@ Target: IntelliJ IDEA 2025.3+ (unified distribution). Stack: Kotlin, IntelliJ Pl
 
 ## Quality (alongside every phase)
 - [x] Automated tests: unit tests, light fixture tests (scanners, Feign resolver, navigation, inspections) and recorder tests (121 so far; completion and gutter markers are not covered yet)
-- [ ] Settings page for the ignore list
+- [x] Settings page for the ignore list (see Phase 6)
 - [ ] CI build, Marketplace-ready metadata
 
 ## Last
