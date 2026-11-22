@@ -96,7 +96,7 @@ class CodeToConfigLineMarkerProvider : RelatedItemLineMarkerProvider() {
         result.add(
             NavigationGutterIconBuilder.create(TendrilIcons.CodeToConfig)
                 .setTargets(targets)
-                .setCellRenderer { ConfigTargetRenderer() }
+                .setTargetRenderer { ConfigTargetRenderer() }
                 .setTooltipText("Navigate to configuration property")
                 .setPopupTitle("Configuration for ${keys.joinToString()}")
                 .createLineMarkerInfo(element),

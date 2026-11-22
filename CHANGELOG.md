@@ -4,6 +4,8 @@ All notable changes to Tendril. The section of the version being built becomes t
 
 ## [Unreleased]
 
+## [0.2.0]
+
 ### Inlay hints (Java and Kotlin, each switchable under Settings | Editor | Inlay Hints)
 - `@Value("${...}")` shows the value the key has in the config files of the chosen profile (values of keys that look like secrets are hidden)
 - `@FeignClient` shows the address it resolves to
@@ -15,6 +17,9 @@ All notable changes to Tendril. The section of the version being built becomes t
 
 ### Recordings
 - Timeline tab for incoming requests: the Feign calls made while serving the request, on one time axis, with the time spent in the application itself
+
+### Fixes
+- The code-to-config gutter icon no longer logs an error when clicked (uses the platform's target presentation renderer)
 
 ## [0.1.0]
 
