@@ -30,6 +30,8 @@ import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import com.intellij.util.ui.tree.TreeUtil
 import dev.tendril.feign.FeignPanel
+import dev.tendril.descriptorOf
+import dev.tendril.readInBackground
 import dev.tendril.ui.Fragment
 import dev.tendril.ui.Palette
 import dev.tendril.ui.PainterTreeRenderer
@@ -322,8 +324,8 @@ internal class EndpointsPanel(
         (tree.lastSelectedPathComponent as? DefaultMutableTreeNode)?.userObject as? Endpoint
 
     private fun navigate() {
-        val m = selectedEndpoint()?.method?.element ?: return
-        (m as? Navigatable)?.takeIf { it.canNavigate() }?.navigate(true)
+        val endpoint = selectedEndpoint() ?: return
+        readInBackground(project, this, { descriptorOf(endpoint.method.element) }) { it?.navigate(true) }
     }
 
     private fun contextMenu(): ActionGroup {
@@ -340,12 +342,14 @@ internal class EndpointsPanel(
         }
         return DefaultActionGroup(
             action("Send Request") {
-                host.sendRequest(ReadAction.compute<String, Throwable> { EndpointRequests.http(project, it) })
+                readInBackground(project, this, { EndpointRequests.http(project, it) }) { text -> host.sendRequest(text) }
             },
             Separator.create(),
             action("Go to Source") { navigate() },
-            action("Copy URL") { copy("URL", ReadAction.compute<String, Throwable> { EndpointRequests.url(project, it) }) },
-            action("Copy as cURL") { copy("cURL command", ReadAction.compute<String, Throwable> { EndpointRequests.curl(project, it) }) },
+            action("Copy URL") { readInBackground(project, this, { EndpointRequests.url(project, it) }) { copy("URL", it) } },
+            action("Copy as cURL") {
+                readInBackground(project, this, { EndpointRequests.curl(project, it) }) { copy("cURL command", it) }
+            },
             action("Open as .http File") { openHttpScratch(it) },
         )
     }
@@ -357,9 +361,10 @@ internal class EndpointsPanel(
     }
 
     private fun openHttpScratch(endpoint: Endpoint) {
-        val text = ReadAction.compute<String, Throwable> { EndpointRequests.http(project, endpoint) }
         val fileName = "${endpoint.httpMethod}_${endpoint.path.trim('/').replace(Regex("[^A-Za-z0-9]+"), "_")}.http"
-        EndpointRequests.openHttpScratch(project, fileName, text)
+        readInBackground(project, this, { EndpointRequests.http(project, endpoint) }) {
+            EndpointRequests.openHttpScratch(project, fileName, it)
+        }
     }
 
     private companion object {

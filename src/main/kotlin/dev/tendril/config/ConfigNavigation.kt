@@ -11,6 +11,7 @@ import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiManager
 import com.intellij.psi.search.FilenameIndex
 import com.intellij.psi.search.GlobalSearchScope
+import com.intellij.openapi.roots.ProjectRootModificationTracker
 import com.intellij.psi.util.CachedValueProvider
 import com.intellij.psi.util.CachedValuesManager
 import com.intellij.psi.util.PsiModificationTracker
@@ -100,7 +101,14 @@ object ConfigNavigation {
 
     private fun keyIndex(project: Project): Map<String, List<PsiElement>> =
         CachedValuesManager.getManager(project).getCachedValue(project) {
-            CachedValueProvider.Result.create(buildKeyIndex(project), PsiModificationTracker.MODIFICATION_COUNT)
+            // The index only reads yml / properties files, so Java edits must not rebuild it.
+            val tracker = PsiModificationTracker.getInstance(project)
+            CachedValueProvider.Result.create(
+                buildKeyIndex(project),
+                tracker.forLanguage(org.jetbrains.yaml.YAMLLanguage.INSTANCE),
+                tracker.forLanguage(com.intellij.lang.properties.PropertiesLanguage.INSTANCE),
+                ProjectRootModificationTracker.getInstance(project),
+            )
         }
 
     private fun buildKeyIndex(project: Project): Map<String, List<PsiElement>> {

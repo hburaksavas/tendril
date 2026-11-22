@@ -5,6 +5,7 @@ import com.intellij.codeInsight.daemon.RelatedItemLineMarkerInfo
 import com.intellij.codeInsight.daemon.RelatedItemLineMarkerProvider
 import com.intellij.codeInsight.navigation.NavigationGutterIconBuilder
 import com.intellij.icons.AllIcons
+import com.intellij.lang.java.JavaLanguage
 import dev.tendril.javaViewOf
 import com.intellij.psi.*
 import com.intellij.psi.util.CachedValueProvider
@@ -37,7 +38,10 @@ class BeanLineMarkerProvider : RelatedItemLineMarkerProvider() {
         // Cached per class so repeated injection points of the same type don't redo the search;
         // no icon when no bean definition exists.
         val beans = CachedValuesManager.getCachedValue(cls) {
-            CachedValueProvider.Result.create(findBeans(cls), PsiModificationTracker.MODIFICATION_COUNT)
+            CachedValueProvider.Result.create(
+                findBeans(cls),
+                PsiModificationTracker.getInstance(cls.project).forLanguage(JavaLanguage.INSTANCE),
+            )
         }
         if (beans.isEmpty()) return
 

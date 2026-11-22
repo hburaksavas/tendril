@@ -25,6 +25,8 @@ import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import com.intellij.util.ui.tree.TreeUtil
 import dev.tendril.config.ConfigProfiles
+import dev.tendril.descriptorOf
+import dev.tendril.readInBackground
 import dev.tendril.config.TendrilSettings
 import dev.tendril.endpoints.EndpointRequests
 import dev.tendril.endpoints.toolbarOf
@@ -221,14 +223,14 @@ internal class FeignPanel(
     private fun selected(): Any? = (tree.lastSelectedPathComponent as? DefaultMutableTreeNode)?.userObject
 
     private fun navigate() {
-        val target: Navigatable? = ReadAction.compute<Navigatable?, Throwable> {
-            when (val s = selected()) {
-                is CallNode -> s.call.method.element as? Navigatable
-                is ClientNode -> s.info.def.cls.element as? Navigatable
+        val s = selected()
+        readInBackground(project, this, {
+            when (s) {
+                is CallNode -> descriptorOf(s.call.method.element)
+                is ClientNode -> descriptorOf(s.info.def.cls.element)
                 else -> null
             }
-        }
-        target?.takeIf { it.canNavigate() }?.navigate(true)
+        }) { target -> target?.navigate(true) }
     }
 
     private fun contextMenu(): ActionGroup = object : ActionGroup() {
@@ -241,13 +243,15 @@ internal class FeignPanel(
             return when (val s = selected()) {
                 is CallNode -> arrayOf(
                     action("Send Request") {
-                        host.sendRequest(ReadAction.compute<String, Throwable> { FeignRequests.http(s.info, s.call) })
+                        readInBackground(project, this@FeignPanel, { FeignRequests.http(s.info, s.call) }) { host.sendRequest(it) }
                     },
                     Separator.create(),
                     action("Go to Source") { navigate() },
-                    action("Copy URL") { copy("URL", ReadAction.compute<String, Throwable> { FeignRequests.url(s.info, s.call) }) },
+                    action("Copy URL") {
+                        readInBackground(project, this@FeignPanel, { FeignRequests.url(s.info, s.call) }) { copy("URL", it) }
+                    },
                     action("Copy as cURL") {
-                        copy("cURL command", ReadAction.compute<String, Throwable> { FeignRequests.curl(s.info, s.call) })
+                        readInBackground(project, this@FeignPanel, { FeignRequests.curl(s.info, s.call) }) { copy("cURL command", it) }
                     },
                     action("Open as .http File") { openHttp(s.info, s.call) },
                 )
@@ -286,8 +290,9 @@ internal class FeignPanel(
     }
 
     private fun openHttp(info: FeignClientInfo, call: FeignCall) {
-        val text = ReadAction.compute<String, Throwable> { FeignRequests.http(info, call) }
-        EndpointRequests.openHttpScratch(project, FeignRequests.fileName(info, call), text)
+        readInBackground(project, this, { FeignRequests.http(info, call) }) {
+            EndpointRequests.openHttpScratch(project, FeignRequests.fileName(info, call), it)
+        }
     }
 
     private fun notify(message: String, type: NotificationType) {

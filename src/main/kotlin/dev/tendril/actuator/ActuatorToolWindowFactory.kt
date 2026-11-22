@@ -34,6 +34,8 @@ import com.intellij.ui.treeStructure.Tree
 import com.intellij.util.concurrency.AppExecutorUtil
 import com.intellij.util.ui.tree.TreeUtil
 import dev.tendril.endpoints.EndpointRequests
+import dev.tendril.descriptorOf
+import dev.tendril.readInBackground
 import java.awt.BorderLayout
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
@@ -76,9 +78,17 @@ internal data class ActuatorNode(
 
 private class ActuatorPanel(private val project: Project) : JPanel(BorderLayout()), Disposable {
     private val url = SearchTextField(false).apply {
-        text = defaultUrl()
+        text = FALLBACK_URL
         toolTipText = "Actuator base URL (management.endpoints.web.base-path)"
         textEditor.emptyText.text = "Actuator address, for example http://localhost:8080/actuator"
+    }
+
+    init {
+        // Port / context path come from the config files: resolve them off the EDT and only replace the
+        // placeholder address if the user has not typed their own meanwhile.
+        readInBackground(project, this, { EndpointRequests.baseUrl(project) + "/actuator" }) { resolved ->
+            if (url.text == FALLBACK_URL) url.text = resolved
+        }
     }
     private val tabs = JBTabbedPane()
     private val views = listOf(
@@ -113,12 +123,6 @@ private class ActuatorPanel(private val project: Project) : JPanel(BorderLayout(
     fun refreshAll() {
         views.forEach { it.loaded = false }
         fetch(views[tabs.selectedIndex])
-    }
-
-    private fun defaultUrl(): String = try {
-        ReadAction.compute<String, Throwable> { EndpointRequests.baseUrl(project) } + "/actuator"
-    } catch (_: Throwable) {
-        "http://localhost:8080/actuator"
     }
 
     private fun fetch(view: ActuatorView) {
@@ -193,10 +197,13 @@ private class ActuatorPanel(private val project: Project) : JPanel(BorderLayout(
 
     private fun navigateToClass(fqn: String) {
         val clean = fqn.substringBefore("$$").replace('$', '.')
-        val target = ReadAction.compute<Navigatable?, Throwable> {
-            JavaPsiFacade.getInstance(project).findClass(clean, GlobalSearchScope.allScope(project)) as? Navigatable
-        }
-        target?.takeIf { it.canNavigate() }?.navigate(true)
+        readInBackground(project, this, {
+            descriptorOf(JavaPsiFacade.getInstance(project).findClass(clean, GlobalSearchScope.allScope(project)))
+        }) { target -> target?.navigate(true) }
+    }
+
+    private companion object {
+        const val FALLBACK_URL = "http://localhost:8080/actuator"
     }
 }
 

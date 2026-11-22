@@ -87,16 +87,17 @@ class SpringHintsTest : SpringTestCase() {
 
     fun `test a Feign client shows its address and path`() {
         yaml("application.yml", "clients:\n  inventory:\n    url: http://localhost:9001")
-        myFixture.addClass(
+        val ann = annotation(
             """
             package app;
             import org.springframework.cloud.openfeign.FeignClient;
             import org.springframework.web.bind.annotation.*;
             @FeignClient(name = "inventory", url = "${'$'}{clients.inventory.url}", path = "/v1")
-            public interface InventoryClient { @GetMapping("/stock") String stock(); }
-            """.trimIndent(),
+            interface InventoryClient { @GetMapping("/stock") String stock(); }
+            """,
+            "FeignClient",
         )
-        myFixture.configureByFile("app/InventoryClient.java".also { })
+        assertEquals("→ http://localhost:9001/v1", FeignHints().hint(ann))
     }
 
     fun `test @Scheduled with a cron shows the next run, with fixed rate how often`() {
