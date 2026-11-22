@@ -16,6 +16,16 @@ See [CHANGELOG.md](CHANGELOG.md) for what each release contains and [ROADMAP.md]
 
 IntelliJ IDEA 2025.3 or later (build 253+). The Maven integration of the recorder needs the bundled Maven plugin; everything else works without it.
 
+## Installing
+
+Until Tendril is on the JetBrains Marketplace, install it from the zip:
+
+1. Download `tendril-<version>.zip` from the [latest release](https://github.com/hburaksavas/tendril/releases/latest) (do not unpack it).
+2. In IntelliJ IDEA open **Settings | Plugins**, click the gear icon, choose **Install Plugin from Disk...** and select the zip.
+3. Restart the IDE when asked.
+
+To update, install the newer zip the same way; it replaces the old version.
+
 ## Building
 
 ```
