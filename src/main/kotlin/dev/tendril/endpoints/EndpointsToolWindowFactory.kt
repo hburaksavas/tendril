@@ -21,7 +21,7 @@ import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.pom.Navigatable
 import com.intellij.ui.*
 import com.intellij.ui.components.JBLabel
-import com.intellij.ui.components.JBScrollPane
+import com.intellij.ui.ScrollPaneFactory
 import com.intellij.ui.components.JBTabbedPane
 import com.intellij.ui.content.ContentFactory
 import com.intellij.ui.treeStructure.Tree
@@ -73,14 +73,14 @@ class EndpointsToolWindowFactory : ToolWindowFactory, DumbAware {
 }
 
 internal class ApiRootPanel(private val project: Project) : JPanel(BorderLayout()), Disposable, RequestHost {
-    private val tabs = JBTabbedPane()
-    private val incoming = EndpointsPanel(project, this) { tabs.setTitleAt(0, "Incoming  $it") }
-    private val outgoing = FeignPanel(project, this) { tabs.setTitleAt(1, "Outgoing  $it") }
+    private val tabs = dev.tendril.ui.TabStrip(project, this)
+    private val incoming = EndpointsPanel(project, this) { tabs.setTooltip(0, "Incoming endpoints: $it") }
+    private val outgoing = FeignPanel(project, this) { tabs.setTooltip(1, "Outgoing Feign calls: $it") }
 
     init {
-        tabs.addTab("Incoming", incoming)
-        tabs.addTab("Outgoing", outgoing)
-        add(tabs, BorderLayout.CENTER)
+        tabs.addIconTab(AllIcons.Actions.Download, "Incoming endpoints", incoming)
+        tabs.addIconTab(AllIcons.Actions.Upload, "Outgoing Feign calls", outgoing)
+        add(tabs.component, BorderLayout.CENTER)
         Disposer.register(this, incoming)
         Disposer.register(this, outgoing)
     }
@@ -127,16 +127,12 @@ internal class EndpointsPanel(
     private val status = JBLabel().apply {
         foreground = JBColor.GRAY
         font = UIUtil.getLabelFont(UIUtil.FontSize.SMALL)
-        border = JBUI.Borders.empty(3, 10)
+        border = dev.tendril.ui.Chrome.statusLine()
     }
     private val renderer = PainterTreeRenderer(::bindRow)
 
-    var grouped: Boolean
-        get() = props.getBoolean(GROUPED_KEY, true)
-        set(value) {
-            props.setValue(GROUPED_KEY, value, false)
-            applyFilter()
-        }
+    /** Endpoints are always listed under their controller. */
+    private val grouped = true
 
     /** Focus mode: only the endpoints declared in the file open in the active editor. */
     var focusMode: Boolean
@@ -164,14 +160,13 @@ internal class EndpointsPanel(
         })
 
         val top = JPanel(BorderLayout()).apply {
-            border = JBUI.Borders.empty(2, 4)
+            border = dev.tendril.ui.Chrome.topRow()
             add(
                 toolbarOf(
                     "TendrilEndpoints", this@EndpointsPanel,
                     object : AnAction("Refresh", "Scan the project again", AllIcons.Actions.Refresh), DumbAware {
                         override fun actionPerformed(e: AnActionEvent) = refresh()
                     },
-                    toggleAction("Group by Controller", AllIcons.Actions.GroupBy, { grouped }) { grouped = it },
                     toggleAction("Only the Active Editor's Endpoints", AllIcons.General.Locate, { focusMode }) { focusMode = it },
                 ),
                 BorderLayout.WEST,
@@ -179,7 +174,7 @@ internal class EndpointsPanel(
             add(search, BorderLayout.CENTER)
         }
         add(top, BorderLayout.NORTH)
-        add(JBScrollPane(tree), BorderLayout.CENTER)
+        add(ScrollPaneFactory.createScrollPane(tree, true), BorderLayout.CENTER)
         add(status, BorderLayout.SOUTH)
 
         project.messageBus.connect(this).subscribe(
@@ -331,7 +326,6 @@ internal class EndpointsPanel(
     }
 
     private companion object {
-        const val GROUPED_KEY = "tendril.endpoints.grouped"
         const val FOCUS_KEY = "tendril.endpoints.focusMode"
     }
 }

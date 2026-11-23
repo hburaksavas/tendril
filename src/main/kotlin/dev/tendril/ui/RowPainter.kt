@@ -105,7 +105,7 @@ internal class RowPainter : JComponent() {
     }
 
     override fun getPreferredSize(): Dimension =
-        Dimension(if (rightAligned) JBUI.scale(120) else run(null) + JBUI.scale(12), JBUI.scale(26))
+        Dimension(if (rightAligned) JBUI.scale(120) else run(null) + JBUI.scale(12), JBUI.scale(28))
 
     override fun paintComponent(g: Graphics) {
         val g2 = g as Graphics2D
@@ -139,7 +139,7 @@ internal class RowPainter : JComponent() {
                 val h = chip.height + JBUI.scale(2)
                 val y = (height - h) / 2
                 g.color = if (selected) Color(255, 255, 255, 46) else ColorUtil.withAlpha(badgeColor, 0.16)
-                g.fill(RoundRectangle2D.Float(x.toFloat(), y.toFloat(), w.toFloat(), h.toFloat(), JBUI.scale(6).toFloat(), JBUI.scale(6).toFloat()))
+                g.fill(RoundRectangle2D.Float(x.toFloat(), y.toFloat(), w.toFloat(), h.toFloat(), JBUI.scale(8).toFloat(), JBUI.scale(8).toFloat()))
                 g.font = chipFont
                 g.color = if (selected) selectedForeground else badgeColor
                 g.drawString(text, x + (w - chip.stringWidth(text)) / 2, (height - chip.height) / 2 + chip.ascent)

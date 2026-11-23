@@ -4,6 +4,19 @@ All notable changes to Tendril. The section of the version being built becomes t
 
 ## [Unreleased]
 
+## [0.5.0]
+
+### Changed
+- Tool windows use the IDE's own tab strip and lighter chrome: hairlines instead of boxes, headers and body of a request or response in one view, link-style actions in Recordings
+- Incoming and Outgoing are icon tabs with tooltips; the Endpoints list is always grouped by controller
+- Actuator: the address is read from the config files (`management.server.port`, `management.endpoints.web.base-path`) instead of a fixed default, and empty states are one short line
+- The Spring Beans tool window is switched off for now; bean gutter icons and inspections are unchanged
+
+### Fixes
+- Send Request from the Endpoints window no longer logs a "Write-unsafe context" error
+- Endpoints and Actuator tool window icons turn white when selected in dark themes
+- The "Keep last" field of Recordings shows three-digit numbers
+
 ## [0.4.0]
 
 ### Endpoints

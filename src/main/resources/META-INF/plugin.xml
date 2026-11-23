@@ -98,8 +98,7 @@
         <projectConfigurable parentId="tools" instance="dev.tendril.settings.TendrilConfigurable"
                              id="dev.tendril.settings" displayName="Tendril" nonDefaultProject="true"/>
         <notificationGroup id="Tendril" displayType="BALLOON"/>
-        <toolWindow id="Spring Beans" anchor="right" icon="/icons/beans.svg"
-                    factoryClass="dev.tendril.beans.BeansToolWindowFactory"/>
+        <!-- Spring Beans tool window: switched off for now (dev.tendril.beans.BeansToolWindowFactory) -->
         <toolWindow id="Spring Endpoints" anchor="right" icon="/icons/endpoints.svg"
                     factoryClass="dev.tendril.endpoints.EndpointsToolWindowFactory"/>
         <codeInsight.lineMarkerProvider language="kotlin"

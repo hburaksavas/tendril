@@ -18,7 +18,7 @@ import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.pom.Navigatable
 import com.intellij.ui.*
 import com.intellij.ui.components.JBLabel
-import com.intellij.ui.components.JBScrollPane
+import com.intellij.ui.ScrollPaneFactory
 import com.intellij.ui.treeStructure.Tree
 import com.intellij.util.concurrency.AppExecutorUtil
 import com.intellij.util.ui.JBUI
@@ -66,7 +66,7 @@ internal class FeignPanel(
     private val status = JBLabel().apply {
         foreground = JBColor.GRAY
         font = UIUtil.getLabelFont(UIUtil.FontSize.SMALL)
-        border = JBUI.Borders.empty(3, 10)
+        border = dev.tendril.ui.Chrome.statusLine()
     }
     private val renderer = PainterTreeRenderer(::bindRow)
     private var all: List<FeignClientInfo> = emptyList()
@@ -116,12 +116,12 @@ internal class FeignPanel(
             add(profiles)
         }
         val top = JPanel(BorderLayout()).apply {
-            border = JBUI.Borders.empty(2, 4)
+            border = dev.tendril.ui.Chrome.topRow()
             add(left, BorderLayout.WEST)
             add(search, BorderLayout.CENTER)
         }
         add(top, BorderLayout.NORTH)
-        add(JBScrollPane(tree), BorderLayout.CENTER)
+        add(ScrollPaneFactory.createScrollPane(tree, true), BorderLayout.CENTER)
         add(status, BorderLayout.SOUTH)
     }
 

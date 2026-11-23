@@ -4,6 +4,7 @@ import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.intellij.icons.AllIcons
+import dev.tendril.endpoints.toolbarOf
 import com.intellij.openapi.Disposable
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
@@ -27,7 +28,7 @@ import com.intellij.ui.ColoredTreeCellRenderer
 import com.intellij.ui.JBColor
 import com.intellij.ui.SearchTextField
 import com.intellij.ui.SimpleTextAttributes
-import com.intellij.ui.components.JBScrollPane
+import com.intellij.ui.ScrollPaneFactory
 import com.intellij.ui.components.JBTabbedPane
 import com.intellij.ui.content.ContentFactory
 import com.intellij.ui.treeStructure.Tree
@@ -78,7 +79,6 @@ internal data class ActuatorNode(
 
 private class ActuatorPanel(private val project: Project) : JPanel(BorderLayout()), Disposable {
     private val url = SearchTextField(false).apply {
-        text = FALLBACK_URL
         toolTipText = "Actuator base URL (management.endpoints.web.base-path)"
         textEditor.emptyText.text = "Actuator address, for example http://localhost:8080/actuator"
     }
@@ -86,11 +86,11 @@ private class ActuatorPanel(private val project: Project) : JPanel(BorderLayout(
     init {
         // Port / context path come from the config files: resolve them off the EDT and only replace the
         // placeholder address if the user has not typed their own meanwhile.
-        readInBackground(project, this, { EndpointRequests.baseUrl(project) + "/actuator" }) { resolved ->
-            if (url.text == FALLBACK_URL) url.text = resolved
+        readInBackground(project, this, { EndpointRequests.actuatorUrl(project) }) { resolved ->
+            if (url.text.isBlank()) url.text = resolved
         }
     }
-    private val tabs = JBTabbedPane()
+    private val tabs = dev.tendril.ui.TabStrip(project, this)
     private val views = listOf(
         ActuatorView("Health", "health", ::parseHealth),
         ActuatorView("Beans", "beans", ::parseBeans),
@@ -102,11 +102,24 @@ private class ActuatorPanel(private val project: Project) : JPanel(BorderLayout(
     private val loggersView = views[4]
 
     init {
-        add(url, BorderLayout.NORTH)
-        views.forEach { tabs.addTab(it.title, it.component) }
-        add(tabs, BorderLayout.CENTER)
+        val top = JPanel(BorderLayout()).apply {
+            border = dev.tendril.ui.Chrome.topRow()
+            add(
+                toolbarOf(
+                    "TendrilActuator", this@ActuatorPanel,
+                    object : AnAction("Refresh", "Read the application again", AllIcons.Actions.Refresh), DumbAware {
+                        override fun actionPerformed(e: AnActionEvent) = refreshAll()
+                    },
+                ),
+                BorderLayout.WEST,
+            )
+            add(url, BorderLayout.CENTER)
+        }
+        add(top, BorderLayout.NORTH)
+        views.forEach { tabs.add(it.title, it.component) }
+        add(tabs.component, BorderLayout.CENTER)
         url.textEditor.addActionListener { refreshAll() }
-        tabs.addChangeListener { views[tabs.selectedIndex].let { if (!it.loaded) fetch(it) } }
+        tabs.onSelect { views[tabs.selectedIndex].let { if (!it.loaded) fetch(it) } }
         views.forEach { it.onNavigate = ::navigateToClass }
         loggersView.actions = { node ->
             val name = node.key
@@ -115,7 +128,7 @@ private class ActuatorPanel(private val project: Project) : JPanel(BorderLayout(
                     loggerAction("Reset (inherit from parent)", name, null))
         }
         views.forEach { it.retry = ::refreshAll }
-        views[0].setMessage("Start the application, then read it", canRetry = true)
+        views[0].setMessage("Not loaded yet", canRetry = true)
     }
 
     override fun dispose() {}
@@ -127,14 +140,18 @@ private class ActuatorPanel(private val project: Project) : JPanel(BorderLayout(
 
     private fun fetch(view: ActuatorView) {
         val base = url.text.trim().trimEnd('/')
-        view.setMessage("Loading $base/${view.path} …")
+        if (base.isEmpty()) {
+            view.setMessage("Address unknown", canRetry = true)
+            return
+        }
+        view.setMessage("Loading…")
         ApplicationManager.getApplication().executeOnPooledThread {
             val result = runCatching { get("$base/${view.path}") }
             ApplicationManager.getApplication().invokeLater({
                 view.loaded = true
                 result.fold(
                     { view.show(it) },
-                    { view.setMessage(describe(it, base, view.path), canRetry = true) },
+                    { view.setMessage(describe(it, base), canRetry = true) },
                 )
             }, ModalityState.any())
         }
@@ -187,12 +204,12 @@ private class ActuatorPanel(private val project: Project) : JPanel(BorderLayout(
 
     private class HttpStatus(val code: Int) : RuntimeException("HTTP $code")
 
-    private fun describe(error: Throwable, base: String, path: String): String = when {
-        error is HttpStatus && error.code == 404 ->
-            "$path is not exposed. Set management.endpoints.web.exposure.include=health,beans,mappings,env"
-        error is HttpStatus -> "Request failed: HTTP ${error.code}"
-        error is IllegalArgumentException -> "Invalid URL: $base"
-        else -> "Cannot reach $base/$path — is the application running with spring-boot-starter-actuator?"
+    private fun describe(error: Throwable, base: String): String = when {
+        error is HttpStatus && error.code == 404 -> "Endpoint not exposed"
+        error is HttpStatus -> "HTTP ${error.code}"
+        error is IllegalArgumentException -> "Invalid address"
+        base.isBlank() -> "Address unknown"
+        else -> "Application not running"
     }
 
     private fun navigateToClass(fqn: String) {
@@ -202,9 +219,6 @@ private class ActuatorPanel(private val project: Project) : JPanel(BorderLayout(
         }) { target -> target?.navigate(true) }
     }
 
-    private companion object {
-        const val FALLBACK_URL = "http://localhost:8080/actuator"
-    }
 }
 
 private class ActuatorView(
@@ -261,8 +275,8 @@ private class ActuatorView(
             override fun removeUpdate(e: DocumentEvent) = rebuild()
             override fun changedUpdate(e: DocumentEvent) = rebuild()
         })
-        if (path != "health") component.add(search, BorderLayout.NORTH)
-        component.add(JBScrollPane(tree), BorderLayout.CENTER)
+        if (path != "health") component.add(JPanel(BorderLayout()).apply { border = dev.tendril.ui.Chrome.topRow(); add(search) }, BorderLayout.NORTH)
+        component.add(ScrollPaneFactory.createScrollPane(tree, true), BorderLayout.CENTER)
     }
 
     /** What to do when the user asks to try again from the empty text; set by the panel. */

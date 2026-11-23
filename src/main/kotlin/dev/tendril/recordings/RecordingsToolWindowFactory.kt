@@ -16,9 +16,10 @@ import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.ui.*
+import com.intellij.ui.components.ActionLink
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBList
-import com.intellij.ui.components.JBScrollPane
+import com.intellij.ui.ScrollPaneFactory
 import com.intellij.ui.components.JBTabbedPane
 import com.intellij.ui.components.JBTextArea
 import com.intellij.ui.content.ContentFactory
@@ -66,20 +67,20 @@ class RecordingsToolWindowFactory : ToolWindowFactory, DumbAware {
 internal class RecordingsPanel(private val project: Project) : JPanel(BorderLayout()), Disposable {
     private val store = RecordingStore.getInstance(project)
     private val status = SimpleColoredComponent()
-    private val tabs = JBTabbedPane()
+    private val tabs = dev.tendril.ui.TabStrip(project, this)
     private val panes = mapOf(
-        RecordingKind.INCOMING to RecordingPane(project, RecordingKind.INCOMING),
-        RecordingKind.OUTGOING to RecordingPane(project, RecordingKind.OUTGOING),
-        RecordingKind.MESSAGE to RecordingPane(project, RecordingKind.MESSAGE),
+        RecordingKind.INCOMING to RecordingPane(project, RecordingKind.INCOMING, this, ::copyArgument),
+        RecordingKind.OUTGOING to RecordingPane(project, RecordingKind.OUTGOING, this, ::copyArgument),
+        RecordingKind.MESSAGE to RecordingPane(project, RecordingKind.MESSAGE, this, ::copyArgument),
     )
 
     init {
-        tabs.addTab("Incoming", panes.getValue(RecordingKind.INCOMING))
-        tabs.addTab("Outgoing", panes.getValue(RecordingKind.OUTGOING))
-        tabs.addTab("Messages", panes.getValue(RecordingKind.MESSAGE))
+        tabs.addIconTab(AllIcons.Actions.Download, "Incoming requests", panes.getValue(RecordingKind.INCOMING))
+        tabs.addIconTab(AllIcons.Actions.Upload, "Outgoing calls", panes.getValue(RecordingKind.OUTGOING))
+        tabs.addIconTab(AllIcons.Toolwindows.ToolWindowMessages, "Messages", panes.getValue(RecordingKind.MESSAGE))
 
         val top = JPanel(BorderLayout()).apply {
-            border = JBUI.Borders.empty(2, 4)
+            border = dev.tendril.ui.Chrome.topRow()
             add(
                 toolbarOf(
                     "TendrilRecordings", this@RecordingsPanel,
@@ -103,7 +104,7 @@ internal class RecordingsPanel(private val project: Project) : JPanel(BorderLayo
             add(keepSpinner(), BorderLayout.CENTER)
         }
         add(top, BorderLayout.NORTH)
-        add(tabs, BorderLayout.CENTER)
+        add(tabs.component, BorderLayout.CENTER)
 
         store.addListener(this) { ApplicationManager.getApplication().invokeLater({ update() }, ModalityState.any()) }
         // the connection state fades after the application stops, with no event to tell us
@@ -121,16 +122,15 @@ internal class RecordingsPanel(private val project: Project) : JPanel(BorderLayo
         return JPanel(FlowLayout(FlowLayout.LEFT, 6, 0)).apply {
             isOpaque = false
             border = JBUI.Borders.emptyLeft(8)
-            add(JBLabel("Keep").apply { foreground = JBColor.GRAY })
-            add(spinner)
-            add(JBLabel("per tab").apply { foreground = JBColor.GRAY })
+            add(JBLabel("Keep last").apply { foreground = JBColor.GRAY })
+            add(spinner.apply { preferredSize = java.awt.Dimension(JBUI.scale(90), preferredSize.height) })
         }
     }
 
     private fun update() {
         panes.forEach { (kind, pane) ->
             pane.show(store.snapshot(kind))
-            tabs.setTitleAt(kind.ordinal, "${TITLES.getValue(kind)}  ${store.snapshot(kind).size}")
+            tabs.setTooltip(kind.ordinal, "${TITLES.getValue(kind)}: ${store.snapshot(kind).size}")
         }
         status.clear()
         val port = RecorderServer.getInstance().port
@@ -174,7 +174,10 @@ internal class RecordingsPanel(private val project: Project) : JPanel(BorderLayo
 }
 
 /** A list of the latest recordings of one kind, and the details of the selected one. */
-internal class RecordingPane(private val project: Project, private val kind: RecordingKind) : JPanel(BorderLayout()) {
+internal class RecordingPane(
+    private val project: Project, private val kind: RecordingKind, parent: com.intellij.openapi.Disposable = project,
+    private val onSetup: () -> Unit = {},
+) : JPanel(BorderLayout()) {
     private val model = DefaultListModel<Recording>()
     private val list = object : JBList<Recording>(model) {
         /** Clicking below the last row would otherwise select the last recording. */
@@ -196,29 +199,34 @@ internal class RecordingPane(private val project: Project, private val kind: Rec
     private val response = Editors.viewer(project)
     private val responseHeaders = Editors.viewer(project)
     private val replay = Editors.viewer(project)
-    private val details = JBTabbedPane()
+    private val details = dev.tendril.ui.TabStrip(project, parent)
     private val timeline = WaterfallPanel()
-    private val replayButton = JButton(if (kind == RecordingKind.MESSAGE) "Republish" else if (kind == RecordingKind.OUTGOING) "Send again" else "Replay")
-    private val openButton = JButton("Open in request editor")
+    private val replayButton = ActionLink(if (kind == RecordingKind.MESSAGE) "Republish" else if (kind == RecordingKind.OUTGOING) "Send again" else "Replay").apply { icon = AllIcons.Actions.Execute }
+    private val openButton = ActionLink("Open as .http").apply { icon = AllIcons.Actions.EditSource }
     private val hint = JBLabel(" ")
 
     init {
         list.cellRenderer = renderer
         list.emptyText.setText("Nothing recorded yet").appendLine(emptyHint())
+            .appendLine("Copy agent argument", com.intellij.ui.SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES) { onSetup() }
         list.addListSelectionListener { if (!it.valueIsAdjusting && !rebuilding) select() }
 
-        details.addTab(if (kind == RecordingKind.MESSAGE) "Routing" else "Request", request)
-        if (kind != RecordingKind.MESSAGE) details.addTab("Request Headers", requestHeaders)
-        details.addTab(if (kind == RecordingKind.MESSAGE) "Message" else "Response", response)
-        details.addTab(if (kind == RecordingKind.MESSAGE) "Headers" else "Response Headers", responseHeaders)
-        details.addTab("Replay", replay)
+        val sections = "tendril.recordings.sections"
+        if (kind == RecordingKind.MESSAGE) {
+            details.add("Routing", request)
+            details.add("Message", dev.tendril.ui.Sections.stacked("$sections.message", "Headers", responseHeaders, "Payload", response))
+        } else {
+            details.add("Request", dev.tendril.ui.Sections.stacked("$sections.request", "Headers", requestHeaders, "Body", request))
+            details.add("Response", dev.tendril.ui.Sections.stacked("$sections.response", "Headers", responseHeaders, "Body", response))
+        }
+        details.add("Replay", replay)
         // where the time of a served request went: the calls made while serving it, on one axis
-        if (kind == RecordingKind.INCOMING) details.addTab("Timeline", JBScrollPane(timeline))
+        if (kind == RecordingKind.INCOMING) details.add("Timeline", ScrollPaneFactory.createScrollPane(timeline, true))
 
         replayButton.addActionListener { replaySelected() }
         openButton.addActionListener { openSelected() }
         openButton.isVisible = kind != RecordingKind.MESSAGE
-        val actions = JPanel(FlowLayout(FlowLayout.LEFT, 6, 0)).apply {
+        val actions = JPanel(FlowLayout(FlowLayout.LEFT, 14, 0)).apply {
             isOpaque = false
             add(replayButton)
             add(openButton)
@@ -230,16 +238,16 @@ internal class RecordingPane(private val project: Project, private val kind: Rec
             add(facts.apply { border = JBUI.Borders.emptyTop(2) }, BorderLayout.CENTER)
         }
         val header = JPanel(BorderLayout()).apply {
-            border = JBUI.Borders.empty(8, 10, 6, 10)
+            border = JBUI.Borders.compound(JBUI.Borders.customLineBottom(JBColor.border()), JBUI.Borders.empty(10, 12, 8, 12))
             add(titles, BorderLayout.NORTH)
             add(actions.apply { border = JBUI.Borders.emptyTop(6) }, BorderLayout.SOUTH)
         }
         val right = JPanel(BorderLayout()).apply {
             add(header, BorderLayout.NORTH)
-            add(details, BorderLayout.CENTER)
+            add(details.component, BorderLayout.CENTER)
         }
         val splitter = OnePixelSplitter(false, "tendril.recordings.$kind", 0.42f)
-        splitter.firstComponent = JBScrollPane(list)
+        splitter.firstComponent = ScrollPaneFactory.createScrollPane(list, true)
         splitter.secondComponent = right
         add(splitter, BorderLayout.CENTER)
         select()
@@ -362,7 +370,7 @@ internal class RecordingPane(private val project: Project, private val kind: Rec
     private fun replaySelected() {
         val r = list.selectedValue ?: return
         if (kind != RecordingKind.MESSAGE && !confirmTarget(r)) return
-        details.selectedComponent = replay
+        details.select(replay)
         Editors.show(replay, "Sending…", PlainTextFileType.INSTANCE)
         replayButton.isEnabled = false
         ApplicationManager.getApplication().executeOnPooledThread {

@@ -48,6 +48,11 @@ internal object HttpScratch {
 
     /** Opens [text] as a scratch `.http` file; variables nobody defines get an empty `@name = ` line to fill in. */
     fun open(project: Project, text: String, fileName: String = "request.http") {
+        // Creating a file is a write action; callers may be in a "modality any" callback, which is not write-safe.
+        ApplicationManager.getApplication().invokeLater({ create(project, text, fileName) }, ModalityState.nonModal(), project.disposed)
+    }
+
+    private fun create(project: Project, text: String, fileName: String) {
         val known = variables(project).keys + HttpRequestText.fileVariables(text).keys
         val missing = HttpRequestText.variables(text).filter { it !in known }
         val content = missing.joinToString("") { "@$it = \n" } + text
@@ -78,19 +83,16 @@ internal class HttpResponsePanel(private val project: Project) : JPanel(BorderLa
         }
         val left = JPanel(FlowLayout(FlowLayout.LEFT, 6, 0)).apply {
             isOpaque = false
-            add(JBLabel("Environment").apply { foreground = JBColor.GRAY; font = font.deriveFont(Font.PLAIN) })
+            add(JBLabel("Env").apply { foreground = JBColor.GRAY; font = font.deriveFont(Font.PLAIN) })
             add(environments)
         }
         val header = JPanel(BorderLayout()).apply {
-            border = JBUI.Borders.empty(3, 8)
-            add(left, BorderLayout.WEST)
-            add(status, BorderLayout.CENTER)
+            border = dev.tendril.ui.Chrome.topRow(4, 8)
+            add(status.apply { border = JBUI.Borders.emptyRight(12) }, BorderLayout.WEST)
+            add(left, BorderLayout.EAST)
         }
-        val tabs = JBTabbedPane()
-        tabs.addTab("Body", body)
-        tabs.addTab("Headers", headers)
         add(header, BorderLayout.NORTH)
-        add(tabs, BorderLayout.CENTER)
+        add(dev.tendril.ui.Sections.stacked("tendril.http.sections", "Headers", headers, "Body", body), BorderLayout.CENTER)
         showHint("Open a .http file and press Ctrl+Enter, or use the arrow in its gutter. The response appears here.")
     }
 

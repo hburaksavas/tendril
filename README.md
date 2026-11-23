@@ -5,7 +5,7 @@ Spring Boot tooling for IntelliJ IDEA that works without an Ultimate subscriptio
 | | |
 |---|---|
 | **Configuration** | Completion in `application*.yml` and `.properties`; unknown and missing-key inspections; navigation both ways between a key and the code that reads it (profiles and modules aware) |
-| **Beans** | Gutter icons between injection points and bean definitions; missing, ambiguous and circular bean inspections; Spring Beans tool window |
+| **Beans** | Gutter icons between injection points and bean definitions; missing, ambiguous and circular bean inspections |
 | **Endpoints** | Incoming endpoints and outgoing Feign clients in one window, with the address each client resolves to per profile; focus mode; copy as cURL |
 | **HTTP client** | `.http` files with a run arrow per request, or send straight from an endpoint or a Feign call; `{{variables}}`, `http-client.env.json` |
 | **Running application** | Actuator window (health, beans, mappings, env, loggers, conditions); Recordings of incoming requests, Feign calls and Rabbit/Kafka input, with replay |

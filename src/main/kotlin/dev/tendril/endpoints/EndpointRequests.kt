@@ -58,6 +58,20 @@ object EndpointRequests {
         return "http://localhost:$port" + (context?.let { "/$it" } ?: "")
     }
 
+    /**
+     * Where the actuator answers, from the config files: `management.server.port` when the management endpoints run
+     * on their own port, else the server's; `management.endpoints.web.base-path` (default `/actuator`).
+     */
+    fun actuatorUrl(project: Project): String {
+        fun digits(key: String) = configValue(project, key)?.takeIf { it.isNotEmpty() && it.all(Char::isDigit) }
+        val managementPort = digits("management.server.port")
+        val port = managementPort ?: digits("server.port") ?: "8080"
+        val context = if (managementPort != null) configValue(project, "management.server.base-path")
+        else configValue(project, "server.servlet.context-path")
+        val base = configValue(project, "management.endpoints.web.base-path")?.trim('/')?.takeIf { it.isNotEmpty() } ?: "actuator"
+        return "http://localhost:$port" + (context?.trim('/')?.takeIf { it.isNotEmpty() }?.let { "/$it" } ?: "") + "/$base"
+    }
+
     private fun configValue(project: Project, key: String): String? {
         val profiles = ConfigProfiles.effectiveProfiles(project, dev.tendril.feign.FeignResolver.selectedProfile(project))
         return dev.tendril.feign.FeignResolver.valueFor(ConfigNavigation.allConfigElements(project, key), profiles)

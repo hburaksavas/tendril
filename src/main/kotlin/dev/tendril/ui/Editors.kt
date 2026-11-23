@@ -35,7 +35,7 @@ internal object Editors {
     private fun create(project: Project, type: FileType, viewer: Boolean): EditorTextField {
         val field = EditorTextField(EditorFactory.getInstance().createDocument(""), project, type, viewer, false)
         field.setFontInheritedFromLAF(false)
-        field.border = JBUI.Borders.empty()
+        field.border = JBUI.Borders.emptyLeft(6)
         field.addSettingsProvider { editor ->
             editor.setBorder(null)
             editor.setVerticalScrollbarVisible(true)

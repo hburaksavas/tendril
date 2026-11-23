@@ -21,7 +21,7 @@ import com.intellij.ui.SearchTextField
 import com.intellij.ui.SimpleTextAttributes
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBList
-import com.intellij.ui.components.JBScrollPane
+import com.intellij.ui.ScrollPaneFactory
 import com.intellij.ui.content.ContentFactory
 import com.intellij.util.concurrency.AppExecutorUtil
 import com.intellij.util.ui.JBUI
@@ -68,7 +68,7 @@ internal class BeansPanel(private val project: Project) : JPanel(BorderLayout())
     private val status = JBLabel().apply {
         foreground = JBColor.GRAY
         font = UIUtil.getLabelFont(UIUtil.FontSize.SMALL)
-        border = JBUI.Borders.empty(3, 10)
+        border = dev.tendril.ui.Chrome.statusLine()
     }
 
     init {
@@ -86,7 +86,7 @@ internal class BeansPanel(private val project: Project) : JPanel(BorderLayout())
         })
 
         val top = JPanel(BorderLayout()).apply {
-            border = JBUI.Borders.empty(2, 4)
+            border = dev.tendril.ui.Chrome.topRow()
             add(
                 toolbarOf(
                     "TendrilBeans", this@BeansPanel,
@@ -99,7 +99,7 @@ internal class BeansPanel(private val project: Project) : JPanel(BorderLayout())
             add(search, BorderLayout.CENTER)
         }
         add(top, BorderLayout.NORTH)
-        add(JBScrollPane(list), BorderLayout.CENTER)
+        add(ScrollPaneFactory.createScrollPane(list, true), BorderLayout.CENTER)
         add(status, BorderLayout.SOUTH)
     }
 
@@ -132,12 +132,29 @@ internal class BeansPanel(private val project: Project) : JPanel(BorderLayout())
     }
 
     private fun bindRow(p: RowPainter, row: BeanRow) {
-        p.badge = kindOf(row.label)
-        p.badgeColor = colorOf(row.label)
+        // calm rows: a colour dot for the kind instead of a chip, details muted on the right
+        p.icon = dot(colorOf(row.label))
+        p.badge = null
         p.primary = listOf(Fragment(row.name, bold = true), Fragment("   ${row.typeName}", Palette.MUTED))
         p.secondary = buildList {
-            row.module?.let { add(Fragment(it, Palette.MUTED)) }
-            if (row.injectedInto > 0) add(Fragment("${if (row.module != null) "   " else ""}used in ${row.injectedInto}", Palette.MUTED))
+            add(Fragment(kindOf(row.label), colorOf(row.label)))
+            row.module?.let { add(Fragment("   $it", Palette.MUTED)) }
+            if (row.injectedInto > 0) add(Fragment("   used in ${row.injectedInto}", Palette.MUTED))
+        }
+    }
+
+    private fun dot(color: Color): javax.swing.Icon = object : javax.swing.Icon {
+        override fun getIconWidth() = JBUI.scale(8)
+        override fun getIconHeight() = JBUI.scale(8)
+        override fun paintIcon(c: java.awt.Component?, g: java.awt.Graphics, x: Int, y: Int) {
+            val g2 = g.create() as java.awt.Graphics2D
+            try {
+                com.intellij.util.ui.GraphicsUtil.setupAAPainting(g2)
+                g2.color = color
+                g2.fillOval(x, y, iconWidth, iconHeight)
+            } finally {
+                g2.dispose()
+            }
         }
     }
 
@@ -148,7 +165,7 @@ internal class BeansPanel(private val project: Project) : JPanel(BorderLayout())
         shown.forEach(model::addElement)
 
         renderer.painter.font = list.font
-        renderer.painter.badgeWidth = renderer.painter.badgeColumn(all.map { kindOf(it.label) } + "Repository")
+        renderer.painter.badgeWidth = 0
         status.text = buildString {
             append(if (shown.size == all.size) "${all.size} beans" else "${shown.size} of ${all.size} beans")
             val modules = all.mapNotNull { it.module }.distinct().size
