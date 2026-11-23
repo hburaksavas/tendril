@@ -15,9 +15,11 @@ import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
+import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.ui.*
 import com.intellij.ui.components.ActionLink
 import com.intellij.ui.components.JBLabel
+import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBList
 import com.intellij.ui.ScrollPaneFactory
 import com.intellij.ui.components.JBTabbedPane
@@ -25,6 +27,10 @@ import com.intellij.ui.components.JBTextArea
 import com.intellij.ui.content.ContentFactory
 import com.intellij.util.ui.JBUI
 import dev.tendril.endpoints.EndpointsToolWindowFactory
+import dev.tendril.endpoints.Endpoint
+import dev.tendril.endpoints.EndpointScanner
+import dev.tendril.descriptorOf
+import dev.tendril.readInBackground
 import dev.tendril.endpoints.HttpMethodColors
 import dev.tendril.endpoints.toolbarOf
 import dev.tendril.http.HttpExecutor
@@ -51,6 +57,7 @@ import javax.swing.JPanel
 import javax.swing.JSpinner
 import javax.swing.SpinnerNumberModel
 import javax.swing.Timer
+import javax.swing.event.DocumentEvent
 
 /**
  * What the application did while it ran with the recorder: the requests it served, the calls it made and the
@@ -61,6 +68,15 @@ class RecordingsToolWindowFactory : ToolWindowFactory, DumbAware {
         val panel = RecordingsPanel(project)
         Disposer.register(toolWindow.disposable, panel)
         toolWindow.contentManager.addContent(ContentFactory.getInstance().createContent(panel, "", false))
+    }
+
+    companion object {
+        fun showRoute(project: Project, endpoint: Endpoint) {
+            val window = ToolWindowManager.getInstance(project).getToolWindow("Recordings") ?: return
+            window.activate {
+                (window.contentManager.getContent(0)?.component as? RecordingsPanel)?.showRoute(endpoint)
+            }
+        }
     }
 }
 
@@ -113,6 +129,12 @@ internal class RecordingsPanel(private val project: Project) : JPanel(BorderLayo
     }
 
     override fun dispose() {}
+
+    fun showRoute(endpoint: Endpoint) {
+        val pane = panes.getValue(RecordingKind.INCOMING)
+        pane.showRoute(endpoint)
+        tabs.select(pane)
+    }
 
     /** "Keep [10] per tab": how many recordings of each kind are held; a typed number replaces the default. */
     private fun keepSpinner(): JPanel {
@@ -191,6 +213,28 @@ internal class RecordingPane(
     private var shownRecording: Recording? = null
     private var shownOnce = false
     private var rebuilding = false
+    private var route: Endpoint? = null
+    private val clearRoute = ActionLink("").apply {
+        isVisible = false
+        addActionListener { setRoute(null) }
+    }
+    private val pendingRecordings = mutableSetOf<Recording>()
+    private val newRecordings = ActionLink("").apply {
+        isVisible = false
+        addActionListener {
+            list.selectedIndex = 0
+            list.ensureIndexIsVisible(0)
+            pendingRecordings.clear()
+            updateNewRecordings()
+        }
+    }
+    private val pathSearch = SearchTextField(false).apply {
+        textEditor.emptyText.text = "Filter by path"
+        textEditor.accessibleContext.accessibleName = "Filter recordings by path"
+    }
+    private val errorsOnly = JBCheckBox("Errors only").apply {
+        toolTipText = "Show HTTP 4xx and 5xx responses and failed requests"
+    }
     private val renderer = PainterListRenderer<Recording>(rightAligned = true, bind = ::bindRow)
     private val summary = SimpleColoredComponent()
     private val facts = SimpleColoredComponent()
@@ -199,16 +243,21 @@ internal class RecordingPane(
     private val response = Editors.viewer(project)
     private val responseHeaders = Editors.viewer(project)
     private val replay = Editors.viewer(project)
+    private val sql = Editors.viewer(project)
     private val details = dev.tendril.ui.TabStrip(project, parent)
     private val timeline = WaterfallPanel()
     private val replayButton = ActionLink(if (kind == RecordingKind.MESSAGE) "Republish" else if (kind == RecordingKind.OUTGOING) "Send again" else "Replay").apply { icon = AllIcons.Actions.Execute }
     private val openButton = ActionLink("Open as .http").apply { icon = AllIcons.Actions.EditSource }
+    private val sourceButton = ActionLink("Go to Controller").apply { isVisible = false }
     private val hint = JBLabel(" ")
 
     init {
         list.cellRenderer = renderer
-        list.emptyText.setText("Nothing recorded yet").appendLine(emptyHint())
-            .appendLine("Copy agent argument", com.intellij.ui.SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES) { onSetup() }
+        updateEmptyText()
+        errorsOnly.addItemListener { refreshList() }
+        pathSearch.addDocumentListener(object : DocumentAdapter() {
+            override fun textChanged(e: DocumentEvent) = refreshList()
+        })
         list.addListSelectionListener { if (!it.valueIsAdjusting && !rebuilding) select() }
 
         val sections = "tendril.recordings.sections"
@@ -221,15 +270,20 @@ internal class RecordingPane(
         }
         details.add("Replay", replay)
         // where the time of a served request went: the calls made while serving it, on one axis
-        if (kind == RecordingKind.INCOMING) details.add("Timeline", ScrollPaneFactory.createScrollPane(timeline, true))
+        if (kind == RecordingKind.INCOMING) {
+            details.add("Timeline", ScrollPaneFactory.createScrollPane(timeline, true))
+            details.add("SQL", sql)
+        }
 
         replayButton.addActionListener { replaySelected() }
         openButton.addActionListener { openSelected() }
+        sourceButton.addActionListener { navigateToController(parent) }
         openButton.isVisible = kind != RecordingKind.MESSAGE
         val actions = JPanel(FlowLayout(FlowLayout.LEFT, 14, 0)).apply {
             isOpaque = false
             add(replayButton)
             add(openButton)
+            add(sourceButton)
             add(hint.apply { foreground = JBColor.GRAY })
         }
         val titles = JPanel(BorderLayout()).apply {
@@ -247,7 +301,20 @@ internal class RecordingPane(
             add(details.component, BorderLayout.CENTER)
         }
         val splitter = OnePixelSplitter(false, "tendril.recordings.$kind", 0.42f)
-        splitter.firstComponent = ScrollPaneFactory.createScrollPane(list, true)
+        splitter.firstComponent = JPanel(BorderLayout()).apply {
+            if (kind != RecordingKind.MESSAGE) {
+                add(JPanel(BorderLayout(0, JBUI.scale(4))).apply {
+                    border = JBUI.Borders.empty(4, 8)
+                    add(pathSearch, BorderLayout.NORTH)
+                    add(JPanel(BorderLayout(JBUI.scale(8), 0)).apply {
+                        add(errorsOnly, BorderLayout.WEST)
+                        add(clearRoute, BorderLayout.CENTER)
+                        add(newRecordings, BorderLayout.EAST)
+                    }, BorderLayout.SOUTH)
+                }, BorderLayout.NORTH)
+            }
+            add(ScrollPaneFactory.createScrollPane(list, true), BorderLayout.CENTER)
+        }
         splitter.secondComponent = right
         add(splitter, BorderLayout.CENTER)
         select()
@@ -256,14 +323,41 @@ internal class RecordingPane(
     fun show(recordings: List<Recording>) {
         // The window refreshes on a timer; rebuilding identical content would reset what the user is reading.
         if (recordings.size == shown.size && recordings.indices.all { recordings[it] === shown[it] }) return
-        shown = recordings
         val selected = list.selectedValue
-        // columns: one badge width, one text width, so status and time line up
+        if (kind != RecordingKind.MESSAGE && selected != null && selected in recordings) {
+            pendingRecordings.retainAll(recordings.toSet())
+            pendingRecordings.addAll(recordings.filterNot { it in shown })
+        } else {
+            pendingRecordings.clear()
+        }
+        shown = recordings
+        refreshList()
+    }
+
+    fun showRoute(endpoint: Endpoint) {
+        pathSearch.text = ""
+        errorsOnly.isSelected = false
+        setRoute(endpoint)
+    }
+
+    private fun setRoute(endpoint: Endpoint?) {
+        route = endpoint
+        clearRoute.text = endpoint?.let { "Clear route filter (${it.httpMethod} ${it.path})" }.orEmpty()
+        clearRoute.isVisible = endpoint != null
+        refreshList()
+    }
+
+    private fun refreshList() {
+        val query = pathSearch.text.trim()
+        val recordings = shown.filter { recording ->
+            val matchesPath = query.isEmpty() || RecordingText.shortUrl(recording, kind).contains(query, ignoreCase = true)
+            val matchesError = !errorsOnly.isSelected || recording.error != null || (recording.status ?: 0) in 400..599
+            matchesPath && matchesError && route?.let { RecordingText.matchesRoute(recording, it) } != false
+        }
+        updateEmptyText()
+        val selected = list.selectedValue
         renderer.painter.font = list.font
         renderer.painter.badgeWidth = renderer.painter.badgeColumn(recordings.map { badgeOf(it) } + "DELETE")
-        renderer.painter.primaryColumn = minOf(
-            JBUI.scale(360), recordings.maxOfOrNull { renderer.painter.measure(primaryOf(it)) } ?: 0,
-        )
         rebuilding = true
         try {
             model.clear()
@@ -274,6 +368,12 @@ internal class RecordingPane(
             rebuilding = false
         }
         select()
+    }
+
+    private fun updateNewRecordings() {
+        val count = (0 until model.size()).count { model.getElementAt(it) in pendingRecordings }
+        newRecordings.text = if (count == 1) "1 new recording" else "$count new recordings"
+        newRecordings.isVisible = count > 0
     }
 
     private fun badgeOf(r: Recording) = if (kind == RecordingKind.MESSAGE) (r.transport ?: "message").uppercase() else r.method ?: "GET"
@@ -295,9 +395,26 @@ internal class RecordingPane(
                 r.status != null -> add(Fragment("${r.status}", Palette.status(r.status), bold = true))
                 r.error != null -> add(Fragment("failed", Palette.FAILED, bold = true))
             }
-            if (kind == RecordingKind.MESSAGE && r.error != null) add(Fragment("failed", Palette.FAILED, bold = true))
-            if (r.durationMs > 0) add(Fragment("   ${r.durationMs} ms", Palette.MUTED))
-            add(Fragment("   ${RecordingText.TIME.format(Date(r.time))}", Palette.MUTED))
+            if (kind == RecordingKind.MESSAGE) {
+                if (r.durationMs > 0) add(Fragment("   ${r.durationMs} ms", Palette.MUTED))
+                add(Fragment("   ${RecordingText.TIME.format(Date(r.time))}", Palette.MUTED))
+            } else {
+                add(Fragment("   ${r.durationMs} ms", Palette.MUTED))
+            }
+        }
+    }
+
+    private fun updateEmptyText() {
+        if (route != null || shown.isNotEmpty() && (errorsOnly.isSelected || pathSearch.text.isNotBlank())) {
+            list.emptyText.setText(if (route == null && pathSearch.text.isBlank()) "No matching errors" else "No matching recordings")
+                .appendLine("Clear filters", SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES) {
+                    pathSearch.text = ""
+                    errorsOnly.isSelected = false
+                    setRoute(null)
+                }
+        } else {
+            list.emptyText.setText("Nothing recorded yet").appendLine(emptyHint())
+                .appendLine("Copy agent argument", SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES) { onSetup() }
         }
     }
 
@@ -309,11 +426,14 @@ internal class RecordingPane(
 
     private fun select() {
         val r = list.selectedValue
+        pendingRecordings.remove(r)
+        updateNewRecordings()
         if (shownOnce && r === shownRecording) return // same recording: keep the scroll position of the editors
         shownOnce = true
         shownRecording = r
         replayButton.isEnabled = r != null && canReplay(r)
         openButton.isEnabled = r != null
+        sourceButton.isVisible = kind == RecordingKind.INCOMING && r?.let { it.handler != null || it.pattern != null } == true
         hint.text = if (r != null && !canReplay(r)) cannotReplay(r) else " "
         summary.clear()
         facts.clear()
@@ -327,12 +447,14 @@ internal class RecordingPane(
                 summary.append("${r.method}  ", SimpleTextAttributes(SimpleTextAttributes.STYLE_BOLD, Palette.method(r.method)))
                 summary.append(RecordingText.shortUrl(r, kind), SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
                 r.status?.let {
-                    summary.append("   $it ${HttpExecutor.reason(it)}".trimEnd(), SimpleTextAttributes(SimpleTextAttributes.STYLE_BOLD, Palette.status(it)))
+                    summary.append(" · $it", SimpleTextAttributes(SimpleTextAttributes.STYLE_BOLD, Palette.status(it)))
                 }
+                summary.append(" · ${r.durationMs} ms", SimpleTextAttributes.GRAYED_ATTRIBUTES)
             }
             val line = listOfNotNull(
                 r.handler?.let { "handled by $it" }, r.client?.let { "client $it" },
-                r.durationMs.takeIf { it > 0 }?.let { "$it ms" }, r.flow.takeIf { it > 0 }?.let { "flow $it" },
+                r.durationMs.takeIf { kind == RecordingKind.MESSAGE && it > 0 }?.let { "$it ms" },
+                r.flow.takeIf { it > 0 }?.let { "flow $it" },
                 RecordingText.TIME.format(Date(r.time)),
             ).joinToString("      ")
             facts.append(line, SimpleTextAttributes.GRAYED_ATTRIBUTES)
@@ -349,6 +471,31 @@ internal class RecordingPane(
         Editors.show(replay, "", PlainTextFileType.INSTANCE)
         if (kind == RecordingKind.INCOMING) {
             timeline.show(r?.let { Waterfall.build(it, RecordingStore.getInstance(project).snapshot(RecordingKind.OUTGOING)) }.orEmpty())
+            val queries = r?.sql.orEmpty()
+            val count = queries.sumOf { it.count }
+            details.setTitle(4, if (count > 0) "SQL ($count)" else "SQL")
+            val text = when {
+                r == null -> ""
+                queries.isEmpty() -> "No SQL executions recorded. To capture prepared JDBC statements, enable tendril.recorder.sql=true in the running application."
+                else -> queries.sortedByDescending { it.count }.joinToString("\n\n") { query ->
+                    val millis = java.math.BigDecimal.valueOf(query.durationMicros, 3).stripTrailingZeros().toPlainString()
+                    "${query.count} executions · $millis ms total\n${query.template}"
+                }
+            }
+            Editors.show(sql, text, PlainTextFileType.INSTANCE)
+        }
+    }
+
+    private fun navigateToController(parent: Disposable) {
+        val recording = list.selectedValue ?: return
+        readInBackground(project, parent, {
+            val candidates = EndpointScanner.cached(project).filter { RecordingText.matchesRoute(recording, it) }
+            val matchingHandler = candidates.filter { recording.handler == "${it.className.substringAfterLast('.')}.${it.methodName}" }
+            val endpoint = matchingHandler.ifEmpty { candidates }.distinctBy { it.method }.singleOrNull()
+            descriptorOf(endpoint?.method?.element)
+        }) { source ->
+            if (source != null) source.navigate(true)
+            else Messages.showInfoMessage(project, "No unique controller was found for this recording.", "Go to Controller")
         }
     }
 
@@ -402,6 +549,12 @@ internal object RecordingText {
     val TIME = SimpleDateFormat("HH:mm:ss")
 
     private val SKIP_ON_REPLAY = setOf("host", "content-length", "connection", "transfer-encoding", "expect", "upgrade", "accept-encoding")
+
+    fun matchesRoute(recording: Recording, endpoint: Endpoint): Boolean {
+        if (endpoint.httpMethod != "ANY" && !endpoint.httpMethod.equals(recording.method, ignoreCase = true)) return false
+        val pattern = recording.pattern ?: shortUrl(recording, RecordingKind.INCOMING).substringBefore('?')
+        return pattern == endpoint.path
+    }
 
     fun shortUrl(r: Recording, kind: RecordingKind): String {
         val uri = runCatching { URI.create(r.url ?: "") }.getOrNull() ?: return r.url.orEmpty()

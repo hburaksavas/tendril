@@ -14,6 +14,8 @@ See [CHANGELOG.md](CHANGELOG.md) for what each release contains and [ROADMAP.md]
 
 ## Requirements
 
+For SQL summaries in incoming HTTP recordings, set `tendril.recorder.sql=true` in the application configuration used with the recorder agent. The SQL tab counts synchronous JDBC prepared-statement executions and shows total execution time by template. It does not collect bound parameters. Complex SQL text may be omitted. Replay the request and inspect the new incoming recording to compare counts and timings.
+
 IntelliJ IDEA 2025.3 or later (build 253+). The Maven integration of the recorder needs the bundled Maven plugin; everything else works without it.
 
 ## Installing

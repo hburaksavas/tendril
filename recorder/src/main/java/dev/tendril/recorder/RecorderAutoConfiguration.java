@@ -31,6 +31,31 @@ public class RecorderAutoConfiguration {
     @ConditionalOnClass(name = {"jakarta.servlet.Filter", "org.springframework.web.filter.OncePerRequestFilter"})
     static class Web {
         @Bean
+        @ConditionalOnProperty(prefix = "tendril.recorder", name = "sql", havingValue = "true")
+        static BeanPostProcessor tendrilSqlRecording() {
+            return new BeanPostProcessor() {
+                @Override
+                public Object postProcessAfterInitialization(Object bean, String name) {
+                    if (!(bean instanceof javax.sql.DataSource) || java.lang.reflect.Modifier.isFinal(bean.getClass().getModifiers())) {
+                        return bean;
+                    }
+                    try {
+                        var factory = new org.springframework.aop.framework.ProxyFactory(bean);
+                        factory.setProxyTargetClass(true);
+                        factory.addAdvice((org.aopalliance.intercept.MethodInterceptor) invocation -> {
+                            Object result = invocation.proceed();
+                            return invocation.getMethod().getName().equals("getConnection") && result instanceof java.sql.Connection connection
+                                    ? SqlRecording.wrap(connection) : result;
+                        });
+                        return factory.getProxy(bean.getClass().getClassLoader());
+                    } catch (org.springframework.aop.framework.AopConfigException ignored) {
+                        return bean;
+                    }
+                }
+            };
+        }
+
+        @Bean
         FilterRegistrationBean<HttpInFilter> tendrilHttpInFilter() {
             FilterRegistrationBean<HttpInFilter> registration = new FilterRegistrationBean<>(new HttpInFilter());
             registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 10);

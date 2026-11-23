@@ -35,25 +35,30 @@ final class HttpInFilter extends OncePerRequestFilter {
         ContentCachingRequestWrapper wrappedRequest = new ContentCachingRequestWrapper(request, Config.MAX_BODY);
         ContentCachingResponseWrapper wrappedResponse = new ContentCachingResponseWrapper(response);
         long flow = Flow.begin();
+        SqlRecording sql = SqlRecording.begin();
         long startedAt = System.currentTimeMillis();
         long started = System.nanoTime();
         try {
             chain.doFilter(wrappedRequest, wrappedResponse);
         } finally {
-            if (!request.isAsyncStarted()) {
-                try {
-                    record(request, wrappedRequest, wrappedResponse, flow, startedAt, (System.nanoTime() - started) / 1_000_000);
-                } catch (RuntimeException ignored) {
-                    // recording must never affect the application
+            try {
+                if (!request.isAsyncStarted()) {
+                    try {
+                        record(request, wrappedRequest, wrappedResponse, flow, startedAt, (System.nanoTime() - started) / 1_000_000, sql);
+                    } catch (RuntimeException ignored) {
+                        // recording must never affect the application
+                    }
+                    wrappedResponse.copyBodyToResponse();
                 }
-                wrappedResponse.copyBodyToResponse();
+            } finally {
+                SqlRecording.end();
+                Flow.end();
             }
-            Flow.end();
         }
     }
 
     private void record(HttpServletRequest original, ContentCachingRequestWrapper request,
-                        ContentCachingResponseWrapper response, long flow, long startedAt, long millis) {
+                        ContentCachingResponseWrapper response, long flow, long startedAt, long millis, SqlRecording sql) {
         StringBuffer url = original.getRequestURL();
         if (original.getQueryString() != null) {
             url.append('?').append(original.getQueryString());
@@ -97,6 +102,7 @@ final class HttpInFilter extends OncePerRequestFilter {
         if (pattern != null) {
             event.str("pattern", pattern.toString());
         }
+        sql.writeTo(event);
         Sender.send(event.build());
     }
 }

@@ -52,6 +52,7 @@ Target: IntelliJ IDEA 2025.3+ (unified distribution). Stack: Kotlin, IntelliJ Pl
 - [ ] Spring Boot 2 / javax servlet, Gradle `bootRun` helper, `.jar` launch (fat jar class loader)
 - [ ] Service-method tree (calls between beans) and recording of non-HTTP outgoing calls
 - [ ] Feign recordings served as stubs
+- [x] SQL tab in incoming HTTP recording details: opt-in capture of synchronous JDBC prepared statements, with execution count and total duration per template. Replay the request to check counts and timing after a change.
 
 ## Kotlin support (measured by KotlinSupportProbe, see build/kotlin-support.txt)
 - [x] Works from Kotlin sources: endpoint scanner and request text, Feign scanner and address resolver, @ConfigurationProperties (data classes, shorthand), @Value on constructor parameters, bean model (stereotypes, @Bean functions, constructor and lateinit field injection), yml to Kotlin navigation

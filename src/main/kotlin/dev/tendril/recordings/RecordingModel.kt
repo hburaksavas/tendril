@@ -10,6 +10,8 @@ import java.util.concurrent.CopyOnWriteArrayList
 
 enum class RecordingKind { INCOMING, OUTGOING, MESSAGE }
 
+data class SqlSummary(val template: String, val count: Long, val durationMicros: Long)
+
 /** One event sent by the recorder inside the running application. */
 class Recording(
     val kind: RecordingKind,
@@ -37,6 +39,7 @@ class Recording(
     val contentType: String?,
     val replayable: Boolean,
     val detail: String?,
+    val sql: List<SqlSummary> = emptyList(),
 ) {
     companion object {
         fun fromJson(o: JsonObject): Recording? {
@@ -76,6 +79,15 @@ class Recording(
                 contentType = o.str("contentType"),
                 replayable = o.get("replayable")?.takeIf { it.isJsonPrimitive }?.asBoolean ?: false,
                 detail = extra,
+                sql = o.get("sql")?.takeIf { it.isJsonArray }?.asJsonArray?.mapNotNull { element ->
+                    if (!element.isJsonObject) return@mapNotNull null
+                    val summary = element.asJsonObject
+                    SqlSummary(
+                        summary.str("template") ?: return@mapNotNull null,
+                        summary.long("count") ?: return@mapNotNull null,
+                        summary.long("durationMicros") ?: return@mapNotNull null,
+                    )
+                }.orEmpty(),
             )
         }
 

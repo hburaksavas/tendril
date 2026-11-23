@@ -304,6 +304,7 @@ internal class EndpointsPanel(
             },
             Separator.create(),
             action("Go to Source") { navigate() },
+            action("Show Route Recordings") { dev.tendril.recordings.RecordingsToolWindowFactory.showRoute(project, it) },
             action("Copy URL") { readInBackground(project, this, { EndpointRequests.url(project, it) }) { copy("URL", it) } },
             action("Copy as cURL") {
                 readInBackground(project, this, { EndpointRequests.curl(project, it) }) { copy("cURL command", it) }

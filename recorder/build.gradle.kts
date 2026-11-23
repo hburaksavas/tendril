@@ -41,6 +41,10 @@ dependencies {
     // ControlServer mentions ApplicationContext in its signature
     testRuntimeOnly(platform("org.springframework.boot:spring-boot-dependencies:3.5.7"))
     testRuntimeOnly("org.springframework:spring-context")
+    testImplementation(platform("org.springframework.boot:spring-boot-dependencies:3.5.7"))
+    testImplementation("org.springframework.boot:spring-boot-starter-web")
+    testImplementation("org.springframework.boot:spring-boot-starter-jdbc")
+    testRuntimeOnly("com.h2database:h2")
 }
 
 tasks.test {

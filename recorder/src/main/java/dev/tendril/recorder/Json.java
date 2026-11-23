@@ -37,6 +37,12 @@ final class Json {
         return this;
     }
 
+    void objects(String key, List<Json> objects) {
+        var values = new java.util.StringJoiner(",", "[", "]");
+        objects.forEach(object -> values.add(object.build()));
+        key(key).append(values);
+    }
+
     /** Header pairs as [["Name","value"], ...]; sensitive headers are masked. */
     Json headers(String key, List<String[]> headers) {
         StringBuilder sb = key(key).append('[');
