@@ -8,7 +8,7 @@ repositories {
 
 dependencies {
     // Everything is compileOnly: the recorder runs inside the application and uses the application's own classes.
-    compileOnly(platform("org.springframework.boot:spring-boot-dependencies:3.5.7"))
+    compileOnly(platform("org.springframework.boot:spring-boot-dependencies:4.2.0"))
     compileOnly("org.springframework.boot:spring-boot")
     compileOnly("org.springframework.boot:spring-boot-autoconfigure")
     compileOnly("org.springframework:spring-web")
@@ -39,9 +39,9 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     // ControlServer mentions ApplicationContext in its signature
-    testRuntimeOnly(platform("org.springframework.boot:spring-boot-dependencies:3.5.7"))
+    testRuntimeOnly(platform("org.springframework.boot:spring-boot-dependencies:4.2.0"))
     testRuntimeOnly("org.springframework:spring-context")
-    testImplementation(platform("org.springframework.boot:spring-boot-dependencies:3.5.7"))
+    testImplementation(platform("org.springframework.boot:spring-boot-dependencies:4.2.0"))
     testImplementation("org.springframework.boot:spring-boot-starter-web")
     testImplementation("org.springframework.boot:spring-boot-starter-jdbc")
     testRuntimeOnly("com.h2database:h2")
