@@ -88,6 +88,12 @@ class HttpRequestTextTest {
     }
 
     @Test
+    fun `a commented line does not require its variables`() {
+        val text = "GET {{host}}/x\n# Authorization: Bearer {{token}}\n// X: {{other}}"
+        assertEquals(listOf("host"), HttpRequestText.variables(text))
+    }
+
+    @Test
     fun `reads file variables`() {
         val vars = HttpRequestText.fileVariables("@host = http://h\n@name=Acme corp\nGET {{host}}\n")
         assertEquals("http://h", vars["host"])

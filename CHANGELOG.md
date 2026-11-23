@@ -4,6 +4,20 @@ All notable changes to Tendril. The section of the version being built becomes t
 
 ## [Unreleased]
 
+### Endpoints
+- Addresses resolve without choosing a profile: `spring.profiles.active` of the default config is used, and `spring.profiles.group.*` (comma list or YAML list, nested) pulls in the config files of the group's members
+- Incoming endpoints are grouped by controller by default
+- Requests open in a real `.http` editor tab (Ctrl+Enter or the gutter arrow); the response shows in the new HTTP Response window, which also holds the environment choice
+- A commented `# Authorization: Bearer {{token}}` line no longer asks for a token
+
+### Recordings
+- The number of recordings kept per tab is set in the window (was fixed at 10)
+- Request body and response are formatted JSON; request headers and response headers have tabs of their own
+- Details no longer jump back to the top while the window refreshes; clicking below the last row no longer selects it
+
+### Spring resources
+- A `.sql` path in an annotation (`@Value("classpath:db/seed.sql")`, `@Sql`, ...) is a link to the file, and a gutter icon in the `.sql` file lists where it is used
+
 ## [0.3.0]
 
 ### Recordings

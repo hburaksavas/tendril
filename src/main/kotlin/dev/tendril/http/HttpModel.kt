@@ -32,7 +32,10 @@ object HttpRequestText {
 
     /** Names of the `{{variables}}` used in [text]; `{{$uuid}}`-style dynamic ones are not included. */
     fun variables(text: String): List<String> =
-        VARIABLE.findAll(text).map { it.groupValues[1] }.filter { !it.startsWith("$") }.distinct().toList()
+        // commented lines (`# Authorization: Bearer {{token}}`) are optional hints, not required variables
+        text.lines().filter { l -> l.trim().let { !it.startsWith("#") && !it.startsWith("//") } }
+            .flatMap { VARIABLE.findAll(it).map { m -> m.groupValues[1] }.toList() }
+            .filter { !it.startsWith("$") }.distinct()
 
     /** File-level variables: lines of the form `@name = value`. */
     fun fileVariables(text: String): Map<String, String> =

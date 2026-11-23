@@ -14,11 +14,10 @@ import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiWhiteSpace
-import dev.tendril.endpoints.EndpointsToolWindowFactory
 
 /** Sends the request that contains [line] of [text]; the response shows in the endpoints window. */
 internal fun runRequestAt(project: Project, text: String, line: Int) {
-    EndpointsToolWindowFactory.runRequest(project, HttpRequestText.block(text, line), text)
+    HttpResponseToolWindowFactory.run(project, HttpRequestText.block(text, line), text)
 }
 
 /** A run arrow in the gutter of every request line of a `.http` file. */

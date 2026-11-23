@@ -6,7 +6,8 @@ import dev.tendril.endpoints.EndpointsPanel
 import dev.tendril.feign.FeignPanel
 import dev.tendril.feign.FeignResolver
 import dev.tendril.feign.FeignScanner
-import dev.tendril.http.HttpRequestPanel
+import dev.tendril.http.HttpResponsePanel
+import dev.tendril.http.HttpResult
 import dev.tendril.http.RequestHost
 import dev.tendril.recordings.Recording
 import dev.tendril.recordings.RecordingKind
@@ -103,9 +104,9 @@ class UiPreviewTest : SpringTestCase() {
 
         UiSnapshot.save(EndpointsPanel(project, host) {}, "endpoints-empty", 820, 200)
 
-        val request = HttpRequestPanel(project) {}
-        request.setRequest("### BrandController.create\nPOST {{baseUrl}}/api/brands\nContent-Type: application/json\n# Authorization: Bearer {{token}}\n\n{\n  \"name\": \"Acme\",\n  \"active\": true\n}\n")
-        UiSnapshot.save(request, "request-section", 820, 380)
+        val response = HttpResponsePanel(project)
+        response.show(HttpResult(201, listOf("Content-Type" to "application/json"), "{\"id\":1,\"name\":\"Acme\"}", 42, 24))
+        UiSnapshot.save(response, "response-section", 820, 380)
 
         val incomingPane = RecordingPane(project, RecordingKind.INCOMING)
         incomingPane.show(

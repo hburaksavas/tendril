@@ -241,4 +241,49 @@ class FeignResolverTest : SpringTestCase() {
         assertTrue(http, http.contains("GET {{baseUrl}}/stock/{{sku}}"))
         assertTrue(http, http.contains("No address resolved"))
     }
+
+    // ---- profile groups ----
+
+    fun `test the active profile of the default config is used without a selection`() {
+        client("""@FeignClient(name = "inventory", url = "${'$'}{clients.inventory.url}")""")
+        yaml("application.yml", "spring:\n  profiles:\n    active: dev\n")
+        yaml("application-dev.yml", "clients:\n  inventory:\n    url: http://dev-host")
+        assertEquals("http://dev-host", resolve(null).resolution.url)
+    }
+
+    fun `test a selected profile group pulls in the files of its members`() {
+        client("""@FeignClient(name = "inventory", url = "${'$'}{clients.inventory.url}")""")
+        yaml(
+            "application.yml",
+            "spring:\n  profiles:\n    group:\n      prod: proddb, prodmq\nclients:\n  inventory:\n    url: http://default",
+        )
+        yaml("application-prodmq.yml", "clients:\n  inventory:\n    url: https://prod-host")
+        assertEquals("https://prod-host", resolve("prod").resolution.url)
+    }
+
+    fun `test a group written as a yaml list is expanded recursively`() {
+        client("""@FeignClient(name = "inventory", url = "${'$'}{clients.inventory.url}")""")
+        yaml(
+            "application.yml",
+            """
+            spring:
+              profiles:
+                active: all
+                group:
+                  all:
+                    - web
+                  web:
+                    - edge
+            """,
+        )
+        yaml("application-edge.yml", "clients:\n  inventory:\n    url: http://edge-host")
+        assertEquals(listOf("all", "web", "edge"), dev.tendril.config.ConfigProfiles.effectiveProfiles(project, null))
+        assertEquals("http://edge-host", resolve(null).resolution.url)
+    }
+
+    fun `test a value only a profile file defines is used when no profile is in effect`() {
+        client("""@FeignClient(name = "inventory", url = "${'$'}{clients.inventory.url}")""")
+        yaml("application-local.yml", "clients:\n  inventory:\n    url: http://local-only")
+        assertEquals("http://local-only", resolve(null).resolution.url)
+    }
 }

@@ -1,6 +1,7 @@
 package dev.tendril.recordings
 
 import com.google.gson.JsonObject
+import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
@@ -87,7 +88,7 @@ class Recording(
     }
 }
 
-/** What the recorder sent for one project: the latest [MAX_PER_KIND] recordings of each kind. */
+/** What the recorder sent for one project: the latest [max] recordings of each kind. */
 @Service(Service.Level.PROJECT)
 class RecordingStore(private val project: Project) : Disposable {
     private val lists = RecordingKind.entries.associateWith { ArrayDeque<Recording>() }
@@ -100,11 +101,20 @@ class RecordingStore(private val project: Project) : Disposable {
     @Volatile
     var lastContact: Long = 0
 
+    /** How many recordings of each kind are kept; the user sets it in the Recordings window. */
+    var max: Int
+        get() = PropertiesComponent.getInstance(project).getInt(MAX_KEY, DEFAULT_MAX).coerceIn(1, LIMIT)
+        set(value) {
+            PropertiesComponent.getInstance(project).setValue(MAX_KEY, value.coerceIn(1, LIMIT), DEFAULT_MAX)
+            synchronized(lists) { lists.values.forEach { while (it.size > max) it.removeLast() } }
+            listeners.forEach { it() }
+        }
+
     fun add(recording: Recording) {
         synchronized(lists) {
             val list = lists.getValue(recording.kind)
             list.addFirst(recording)
-            while (list.size > MAX_PER_KIND) list.removeLast()
+            while (list.size > max) list.removeLast()
         }
         listeners.forEach { it() }
     }
@@ -132,7 +142,9 @@ class RecordingStore(private val project: Project) : Disposable {
     }
 
     companion object {
-        const val MAX_PER_KIND = 10
+        const val DEFAULT_MAX = 10
+        const val LIMIT = 1000
+        private const val MAX_KEY = "tendril.recordings.max"
         fun getInstance(project: Project): RecordingStore = project.service()
     }
 }

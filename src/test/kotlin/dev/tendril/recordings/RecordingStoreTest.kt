@@ -17,9 +17,25 @@ class RecordingStoreTest : BasePlatformTestCase() {
         val store = RecordingStore(project)
         for (i in 1..13) store.add(http(i))
         val kept = store.snapshot(RecordingKind.INCOMING)
-        assertEquals(RecordingStore.MAX_PER_KIND, kept.size)
+        assertEquals(RecordingStore.DEFAULT_MAX, kept.size)
         assertEquals(13L, kept.first().time)
         assertEquals(4L, kept.last().time)
+    }
+
+    fun `test the number of kept recordings can be changed`() {
+        val store = RecordingStore(project)
+        try {
+            store.max = 3
+            for (i in 1..8) store.add(http(i))
+            assertEquals(listOf(8L, 7L, 6L), store.snapshot(RecordingKind.INCOMING).map { it.time })
+            store.max = 2 // lowering it trims what is held
+            assertEquals(2, store.snapshot(RecordingKind.INCOMING).size)
+            store.max = 5
+            for (i in 9..14) store.add(http(i))
+            assertEquals(5, store.snapshot(RecordingKind.INCOMING).size)
+        } finally {
+            store.max = RecordingStore.DEFAULT_MAX
+        }
     }
 
     fun `test the kinds are limited independently`() {

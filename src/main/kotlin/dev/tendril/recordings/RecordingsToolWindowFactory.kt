@@ -47,6 +47,8 @@ import javax.swing.DefaultListModel
 import javax.swing.JButton
 import javax.swing.JList
 import javax.swing.JPanel
+import javax.swing.JSpinner
+import javax.swing.SpinnerNumberModel
 import javax.swing.Timer
 
 /**
@@ -98,6 +100,7 @@ internal class RecordingsPanel(private val project: Project) : JPanel(BorderLayo
                 BorderLayout.WEST,
             )
             add(status.apply { border = JBUI.Borders.empty(0, 8) }, BorderLayout.EAST)
+            add(keepSpinner(), BorderLayout.CENTER)
         }
         add(top, BorderLayout.NORTH)
         add(tabs, BorderLayout.CENTER)
@@ -109,6 +112,20 @@ internal class RecordingsPanel(private val project: Project) : JPanel(BorderLayo
     }
 
     override fun dispose() {}
+
+    /** "Keep [10] per tab": how many recordings of each kind are held; a typed number replaces the default. */
+    private fun keepSpinner(): JPanel {
+        val spinner = JSpinner(SpinnerNumberModel(store.max, 1, RecordingStore.LIMIT, 1))
+        spinner.toolTipText = "How many recordings of each kind are kept"
+        spinner.addChangeListener { store.max = (spinner.value as Number).toInt() }
+        return JPanel(FlowLayout(FlowLayout.LEFT, 6, 0)).apply {
+            isOpaque = false
+            border = JBUI.Borders.emptyLeft(8)
+            add(JBLabel("Keep").apply { foreground = JBColor.GRAY })
+            add(spinner)
+            add(JBLabel("per tab").apply { foreground = JBColor.GRAY })
+        }
+    }
 
     private fun update() {
         panes.forEach { (kind, pane) ->
@@ -159,13 +176,25 @@ internal class RecordingsPanel(private val project: Project) : JPanel(BorderLayo
 /** A list of the latest recordings of one kind, and the details of the selected one. */
 internal class RecordingPane(private val project: Project, private val kind: RecordingKind) : JPanel(BorderLayout()) {
     private val model = DefaultListModel<Recording>()
-    private val list = JBList(model)
+    private val list = object : JBList<Recording>(model) {
+        /** Clicking below the last row would otherwise select the last recording. */
+        override fun locationToIndex(location: java.awt.Point): Int {
+            val index = super.locationToIndex(location)
+            if (index < 0) return index
+            return if (getCellBounds(index, index)?.contains(location) == true) index else -1
+        }
+    }
+    private var shown: List<Recording> = emptyList()
+    private var shownRecording: Recording? = null
+    private var shownOnce = false
+    private var rebuilding = false
     private val renderer = PainterListRenderer<Recording>(rightAligned = true, bind = ::bindRow)
     private val summary = SimpleColoredComponent()
     private val facts = SimpleColoredComponent()
     private val request = Editors.viewer(project)
+    private val requestHeaders = Editors.viewer(project)
     private val response = Editors.viewer(project)
-    private val headers = Editors.viewer(project)
+    private val responseHeaders = Editors.viewer(project)
     private val replay = Editors.viewer(project)
     private val details = JBTabbedPane()
     private val timeline = WaterfallPanel()
@@ -176,11 +205,12 @@ internal class RecordingPane(private val project: Project, private val kind: Rec
     init {
         list.cellRenderer = renderer
         list.emptyText.setText("Nothing recorded yet").appendLine(emptyHint())
-        list.addListSelectionListener { if (!it.valueIsAdjusting) select() }
+        list.addListSelectionListener { if (!it.valueIsAdjusting && !rebuilding) select() }
 
-        details.addTab("Request", request)
+        details.addTab(if (kind == RecordingKind.MESSAGE) "Routing" else "Request", request)
+        if (kind != RecordingKind.MESSAGE) details.addTab("Request Headers", requestHeaders)
         details.addTab(if (kind == RecordingKind.MESSAGE) "Message" else "Response", response)
-        details.addTab("Headers", headers)
+        details.addTab(if (kind == RecordingKind.MESSAGE) "Headers" else "Response Headers", responseHeaders)
         details.addTab("Replay", replay)
         // where the time of a served request went: the calls made while serving it, on one axis
         if (kind == RecordingKind.INCOMING) details.addTab("Timeline", JBScrollPane(timeline))
@@ -216,6 +246,9 @@ internal class RecordingPane(private val project: Project, private val kind: Rec
     }
 
     fun show(recordings: List<Recording>) {
+        // The window refreshes on a timer; rebuilding identical content would reset what the user is reading.
+        if (recordings.size == shown.size && recordings.indices.all { recordings[it] === shown[it] }) return
+        shown = recordings
         val selected = list.selectedValue
         // columns: one badge width, one text width, so status and time line up
         renderer.painter.font = list.font
@@ -223,10 +256,16 @@ internal class RecordingPane(private val project: Project, private val kind: Rec
         renderer.painter.primaryColumn = minOf(
             JBUI.scale(360), recordings.maxOfOrNull { renderer.painter.measure(primaryOf(it)) } ?: 0,
         )
-        model.clear()
-        recordings.forEach { model.addElement(it) }
-        list.setSelectedValue(selected, true)
-        if (list.selectedIndex < 0 && model.size() > 0) list.selectedIndex = 0
+        rebuilding = true
+        try {
+            model.clear()
+            recordings.forEach { model.addElement(it) }
+            list.setSelectedValue(selected, true)
+            if (list.selectedIndex < 0 && model.size() > 0) list.selectedIndex = 0
+        } finally {
+            rebuilding = false
+        }
+        select()
     }
 
     private fun badgeOf(r: Recording) = if (kind == RecordingKind.MESSAGE) (r.transport ?: "message").uppercase() else r.method ?: "GET"
@@ -262,6 +301,9 @@ internal class RecordingPane(private val project: Project, private val kind: Rec
 
     private fun select() {
         val r = list.selectedValue
+        if (shownOnce && r === shownRecording) return // same recording: keep the scroll position of the editors
+        shownOnce = true
+        shownRecording = r
         replayButton.isEnabled = r != null && canReplay(r)
         openButton.isEnabled = r != null
         hint.text = if (r != null && !canReplay(r)) cannotReplay(r) else " "
@@ -287,10 +329,15 @@ internal class RecordingPane(private val project: Project, private val kind: Rec
             ).joinToString("      ")
             facts.append(line, SimpleTextAttributes.GRAYED_ATTRIBUTES)
         }
-        Editors.show(request, r?.let { RecordingText.request(it) }.orEmpty(), if (r != null && kind != RecordingKind.MESSAGE) HttpFileType else PlainTextFileType.INSTANCE)
+        val requestText = r?.let { RecordingText.request(it) }.orEmpty()
+        Editors.show(
+            request, requestText,
+            if (r != null && kind != RecordingKind.MESSAGE) Editors.typeOf(requestText) else PlainTextFileType.INSTANCE,
+        )
+        Editors.show(requestHeaders, r?.let { RecordingText.requestHeaders(it) }.orEmpty(), PlainTextFileType.INSTANCE)
         val body = r?.let { RecordingText.response(it) }.orEmpty()
         Editors.show(response, body, Editors.typeOf(body))
-        Editors.show(headers, r?.let { RecordingText.headers(it) }.orEmpty(), PlainTextFileType.INSTANCE)
+        Editors.show(responseHeaders, r?.let { RecordingText.responseHeaders(it) }.orEmpty(), PlainTextFileType.INSTANCE)
         Editors.show(replay, "", PlainTextFileType.INSTANCE)
         if (kind == RecordingKind.INCOMING) {
             timeline.show(r?.let { Waterfall.build(it, RecordingStore.getInstance(project).snapshot(RecordingKind.OUTGOING)) }.orEmpty())
@@ -315,7 +362,7 @@ internal class RecordingPane(private val project: Project, private val kind: Rec
     private fun replaySelected() {
         val r = list.selectedValue ?: return
         if (kind != RecordingKind.MESSAGE && !confirmTarget(r)) return
-        details.selectedIndex = 3
+        details.selectedComponent = replay
         Editors.show(replay, "Sending…", PlainTextFileType.INSTANCE)
         replayButton.isEnabled = false
         ApplicationManager.getApplication().executeOnPooledThread {
@@ -354,7 +401,7 @@ internal object RecordingText {
         return if (kind == RecordingKind.OUTGOING) "${uri.host ?: ""}$path" else path
     }
 
-    /** The Request tab: for HTTP, in `.http` syntax (so it gets that highlighting); for a message, its routing facts. */
+    /** The Request tab: the body, formatted (method and address are in the title); for a message, its routing facts. */
     fun request(r: Recording): String = buildString {
         if (r.kind == RecordingKind.MESSAGE) {
             r.exchange?.takeIf { it.isNotEmpty() }?.let { append("exchange      $it\n") }
@@ -364,9 +411,7 @@ internal object RecordingText {
             if (isEmpty()) append("No routing information was recorded.")
             return@buildString
         }
-        append("${r.method} ${r.url}\n")
-        r.headers.forEach { append("${it.first}: ${it.second}\n") }
-        r.body?.let { append("\n").append(HttpExecutor.pretty(it)).append('\n') }
+        append(r.body?.let { HttpExecutor.pretty(it) } ?: "No body")
     }
 
     /** The Response (or Message) tab: the body, formatted. */
@@ -384,18 +429,16 @@ internal object RecordingText {
         r.error?.let { append("\n\n$it") }
     }
 
-    /** The Headers tab. */
-    fun headers(r: Recording): String = buildString {
-        fun section(title: String, list: List<Pair<String, String>>) {
-            if (list.isEmpty()) return
-            if (isNotEmpty()) append('\n')
-            append(title).append('\n')
-            list.forEach { append("  ${it.first}: ${it.second}\n") }
-        }
-        section(if (r.kind == RecordingKind.MESSAGE) "Message headers" else "Request headers", r.headers)
-        section("Response headers", r.responseHeaders)
-        if (isEmpty()) append("No headers were recorded.")
-    }
+    private fun headerLines(list: List<Pair<String, String>>, empty: String) =
+        if (list.isEmpty()) empty else list.joinToString("\n") { "${it.first}: ${it.second}" }
+
+    /** The Request Headers tab. */
+    fun requestHeaders(r: Recording): String = headerLines(r.headers, "No request headers were recorded.")
+
+    /** The Response Headers tab; a message only has the headers it came with. */
+    fun responseHeaders(r: Recording): String =
+        if (r.kind == RecordingKind.MESSAGE) headerLines(r.headers, "No headers were recorded.")
+        else headerLines(r.responseHeaders, "No response headers were recorded.")
 
     /** The request as a `.http` request; masked headers become a placeholder comment. */
     fun httpFile(r: Recording): String = buildString {

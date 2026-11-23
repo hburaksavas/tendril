@@ -36,7 +36,7 @@ import dev.tendril.ui.Fragment
 import dev.tendril.ui.Palette
 import dev.tendril.ui.PainterTreeRenderer
 import dev.tendril.ui.RowPainter
-import dev.tendril.http.HttpRequestPanel
+import dev.tendril.http.HttpScratch
 import dev.tendril.http.RequestHost
 import java.awt.BorderLayout
 import java.awt.datatransfer.StringSelection
@@ -65,39 +65,22 @@ class EndpointsToolWindowFactory : ToolWindowFactory, DumbAware {
     companion object {
         const val ID = "Spring Endpoints"
 
-        /** Shows the window and opens [text] in its request section; [outgoing] also switches to the Outgoing tab. */
-        fun sendRequest(project: Project, text: String, outgoing: Boolean) {
-            val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(ID) ?: return
-            toolWindow.activate {
-                val root = toolWindow.contentManager.contents.firstOrNull()?.component as? ApiRootPanel ?: return@activate
-                if (outgoing) root.showOutgoing()
-                root.sendRequest(text)
-            }
-        }
-
-        /** Runs [block], a request taken from a `.http` file ([fileText]), and shows the response in the bottom section. */
-        fun runRequest(project: Project, block: String, fileText: String) {
-            val toolWindow = ToolWindowManager.getInstance(project).getToolWindow(ID) ?: return
-            toolWindow.activate {
-                val root = toolWindow.contentManager.contents.firstOrNull()?.component as? ApiRootPanel ?: return@activate
-                root.runRequest(block, fileText)
-            }
+        /** Opens [text] in a `.http` editor tab. */
+        fun sendRequest(project: Project, text: String, @Suppress("UNUSED_PARAMETER") outgoing: Boolean = false) {
+            HttpScratch.open(project, text)
         }
     }
 }
 
-internal class ApiRootPanel(project: Project) : JPanel(BorderLayout()), Disposable, RequestHost {
+internal class ApiRootPanel(private val project: Project) : JPanel(BorderLayout()), Disposable, RequestHost {
     private val tabs = JBTabbedPane()
     private val incoming = EndpointsPanel(project, this) { tabs.setTitleAt(0, "Incoming  $it") }
     private val outgoing = FeignPanel(project, this) { tabs.setTitleAt(1, "Outgoing  $it") }
-    private val request = HttpRequestPanel(project) { hideRequest() }
-    private val splitter = OnePixelSplitter(true, "tendril.api.splitter", 0.55f)
 
     init {
         tabs.addTab("Incoming", incoming)
         tabs.addTab("Outgoing", outgoing)
-        splitter.firstComponent = tabs
-        add(splitter, BorderLayout.CENTER)
+        add(tabs, BorderLayout.CENTER)
         Disposer.register(this, incoming)
         Disposer.register(this, outgoing)
     }
@@ -109,28 +92,8 @@ internal class ApiRootPanel(project: Project) : JPanel(BorderLayout()), Disposab
         outgoing.refresh()
     }
 
-    fun showOutgoing() {
-        tabs.selectedComponent = outgoing
-    }
-
     override fun sendRequest(text: String) {
-        request.setRequest(text)
-        splitter.secondComponent = request
-        revalidate()
-        repaint()
-    }
-
-    fun runRequest(block: String, fileText: String) {
-        splitter.secondComponent = request
-        revalidate()
-        repaint()
-        request.runBlock(block, fileText)
-    }
-
-    private fun hideRequest() {
-        splitter.secondComponent = null
-        revalidate()
-        repaint()
+        HttpScratch.open(project, text)
     }
 }
 
@@ -169,7 +132,7 @@ internal class EndpointsPanel(
     private val renderer = PainterTreeRenderer(::bindRow)
 
     var grouped: Boolean
-        get() = props.getBoolean(GROUPED_KEY, false)
+        get() = props.getBoolean(GROUPED_KEY, true)
         set(value) {
             props.setValue(GROUPED_KEY, value, false)
             applyFilter()

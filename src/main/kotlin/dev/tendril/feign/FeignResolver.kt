@@ -57,10 +57,11 @@ object FeignResolver {
     fun selectProfile(project: Project, profile: String?) =
         PropertiesComponent.getInstance(project).setValue(PROFILE_KEY, profile.orEmpty())
 
-    fun resolve(project: Project, def: FeignClientDef, profile: String?): FeignClientInfo {
-        val (name, _) = substitute(project, def.name, profile)
-        val (path, _) = substitute(project, def.path, profile)
-        val (url, urlUnresolved) = substitute(project, def.url, profile)
+    fun resolve(project: Project, def: FeignClientDef, selected: String?): FeignClientInfo {
+        val profile = ConfigProfiles.effectiveProfiles(project, selected)
+        val (name, _) = substituteIn(project, def.name, profile)
+        val (path, _) = substituteIn(project, def.path, profile)
+        val (url, urlUnresolved) = substituteIn(project, def.url, profile)
 
         val resolution = if (def.url.isNotBlank() && url.isNotBlank() && urlUnresolved.isEmpty()) {
             FeignResolution(withScheme(url), if (def.url == url) "url attribute" else "url attribute ${def.url}")
@@ -74,7 +75,7 @@ object FeignResolver {
         return FeignClientInfo(def, name, path, resolution)
     }
 
-    private fun byName(project: Project, name: String, profile: String?): FeignResolution? {
+    private fun byName(project: Project, name: String, profile: List<String>): FeignResolution? {
         if (name.isBlank()) return null
 
         TendrilSettings.getInstance(project).state.serviceUrls[name]?.takeIf { it.isNotBlank() }?.let {
@@ -84,7 +85,7 @@ object FeignResolver {
         for (template in nameKeys(project)) {
             val key = template.replace("{name}", name)
             val raw = valueFor(ConfigNavigation.allConfigElements(project, key), profile) ?: continue
-            val (resolved, unresolved) = substitute(project, raw, profile)
+            val (resolved, unresolved) = substituteIn(project, raw, profile)
             val first = resolved.split(',').first().trim()
             if (unresolved.isEmpty() && first.isNotEmpty()) return FeignResolution(withScheme(first), "config key $key")
         }
@@ -93,7 +94,7 @@ object FeignResolver {
         val instance = "$SIMPLE_INSTANCES.$name[0]"
         fun part(suffix: String): String? =
             valueFor(ConfigNavigation.allConfigElements(project, "$instance.$suffix"), profile)
-                ?.let { substitute(project, it, profile) }?.takeIf { it.second.isEmpty() }?.first
+                ?.let { substituteIn(project, it, profile) }?.takeIf { it.second.isEmpty() }?.first
         part("host")?.let { host ->
             val secure = part("secure")?.toBooleanStrictOrNull() == true
             val port = part("port")?.takeIf { p -> p.all(Char::isDigit) }
@@ -111,7 +112,7 @@ object FeignResolver {
                 .sortedBy { it.key.length }
             for ((_, elements) in candidates) {
                 val raw = valueFor(elements, profile) ?: continue
-                val (resolved, unresolved) = substitute(project, raw, profile)
+                val (resolved, unresolved) = substituteIn(project, raw, profile)
                 if (unresolved.isEmpty() && (resolved.startsWith("http://") || resolved.startsWith("https://"))) {
                     return FeignResolution(resolved.trimEnd('/'), "guessed from config key ${keyText(elements.first())}")
                 }
@@ -121,7 +122,10 @@ object FeignResolver {
     }
 
     /** Replaces `${key}` / `${key:default}` using the config files; unresolved keys are returned and left in place. */
-    fun substitute(project: Project, text: String, profile: String?): Pair<String, List<String>> {
+    fun substitute(project: Project, text: String, selected: String?): Pair<String, List<String>> =
+        substituteIn(project, text, ConfigProfiles.effectiveProfiles(project, selected))
+
+    private fun substituteIn(project: Project, text: String, profile: List<String>): Pair<String, List<String>> {
         if ('$' !in text) return text to emptyList()
         val unresolved = LinkedHashSet<String>()
         var current = text
@@ -164,10 +168,14 @@ object FeignResolver {
     }
 
     /** The profile-specific value if the profile defines one, else the default (profile-less) value. */
-    private fun valueFor(elements: List<PsiElement>, profile: String?): String? {
-        val ordered = (if (profile != null) elements.filter { ConfigProfiles.profileOf(it) == profile } else emptyList()) +
+    internal fun valueFor(elements: List<PsiElement>, profiles: List<String>): String? {
+        // later profiles win; the default (profile-less) value is the last resort
+        val ordered = profiles.asReversed().flatMap { p -> elements.filter { ConfigProfiles.profileOf(it) == p } } +
             elements.filter { ConfigProfiles.profileOf(it) == null }
-        return ordered.firstNotNullOfOrNull { valueOf(it) }
+        ordered.firstNotNullOfOrNull { valueOf(it) }?.let { return it }
+        // No profile is in effect and the default config says nothing: a value that only a profile file defines
+        // beats no address at all.
+        return if (profiles.isEmpty()) elements.firstNotNullOfOrNull { valueOf(it) } else null
     }
 
     private fun valueOf(e: PsiElement): String? = when (e) {

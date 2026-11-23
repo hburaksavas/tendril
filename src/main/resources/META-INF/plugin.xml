@@ -62,6 +62,9 @@
                                         implementationClass="dev.tendril.config.ConfigKeyLineMarkerProvider"/>
         <codeInsight.lineMarkerProvider language="Properties"
                                         implementationClass="dev.tendril.config.ConfigKeyLineMarkerProvider"/>
+        <psi.referenceContributor language="UAST"
+                                  implementation="dev.tendril.resources.SqlResourceReferenceContributor"/>
+        <codeInsight.lineMarkerProvider implementationClass="dev.tendril.resources.SqlUsagesLineMarkerProvider"/>
         <gotoDeclarationHandler implementation="dev.tendril.config.ConfigKeyGotoDeclarationHandler"/>
         <psi.referenceContributor language="UAST"
                                   implementation="dev.tendril.config.ValuePlaceholderReferenceContributor"/>
@@ -103,6 +106,8 @@
                                         implementationClass="dev.tendril.feign.FeignLineMarkerProvider"/>
         <codeInsight.lineMarkerProvider language="JAVA"
                                         implementationClass="dev.tendril.feign.FeignLineMarkerProvider"/>
+        <toolWindow id="HTTP Response" anchor="bottom" icon="/icons/endpoints.svg"
+                    factoryClass="dev.tendril.http.HttpResponseToolWindowFactory"/>
         <toolWindow id="Spring Actuator" anchor="right" icon="/icons/actuator.svg"
                     factoryClass="dev.tendril.actuator.ActuatorToolWindowFactory"/>
 

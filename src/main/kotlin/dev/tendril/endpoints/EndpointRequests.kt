@@ -1,11 +1,10 @@
 package dev.tendril.endpoints
 
-import com.intellij.lang.properties.psi.Property
 import com.intellij.openapi.project.Project
 import com.intellij.psi.*
 import dev.tendril.config.ConfigNavigation
+import dev.tendril.config.ConfigProfiles
 import dev.tendril.config.firstNonBlank
-import org.jetbrains.yaml.psi.YAMLKeyValue
 
 /** Turns an [Endpoint] into something you can send: URL, cURL command, or an `.http` request. Needs a read action. */
 object EndpointRequests {
@@ -59,14 +58,10 @@ object EndpointRequests {
         return "http://localhost:$port" + (context?.let { "/$it" } ?: "")
     }
 
-    private fun configValue(project: Project, key: String): String? =
-        ConfigNavigation.allConfigElements(project, key).firstNotNullOfOrNull {
-            when (it) {
-                is YAMLKeyValue -> it.valueText.takeIf { v -> v.isNotBlank() }
-                is Property -> it.unescapedValue?.takeIf { v -> v.isNotBlank() }
-                else -> null
-            }
-        }
+    private fun configValue(project: Project, key: String): String? {
+        val profiles = ConfigProfiles.effectiveProfiles(project, dev.tendril.feign.FeignResolver.selectedProfile(project))
+        return dev.tendril.feign.FeignResolver.valueFor(ConfigNavigation.allConfigElements(project, key), profiles)
+    }
 
     private fun query(e: Endpoint): String = queryOf(e.method.element)
 
