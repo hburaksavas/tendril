@@ -4,6 +4,8 @@ All notable changes to Tendril. The section of the version being built becomes t
 
 ## [Unreleased]
 
+## [0.4.0]
+
 ### Endpoints
 - Addresses resolve without choosing a profile: `spring.profiles.active` of the default config is used, and `spring.profiles.group.*` (comma list or YAML list, nested) pulls in the config files of the group's members
 - Incoming endpoints are grouped by controller by default
