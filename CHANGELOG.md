@@ -4,6 +4,12 @@ All notable changes to Tendril. The section of the version being built becomes t
 
 ## [Unreleased]
 
+## [0.6.0]
+
+### Recordings
+- Filter the list by path or show only failed requests; "Show Route Recordings" in the Endpoints context menu lists the recordings of one endpoint, and "Go to Controller" opens the handler of a recording
+- SQL tab for incoming requests (opt-in, `tendril.recorder.sql=true`): count and total time of the JDBC prepared statements run while serving the request, per statement template; bound parameters are not collected
+
 ## [0.5.0]
 
 ### Changed
