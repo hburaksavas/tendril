@@ -47,6 +47,27 @@ class ConfigProfilesTest : SpringTestCase() {
         assertTrue(ConfigProfiles.knownProfiles(project).containsAll(setOf("dev", "prod", "test")))
     }
 
+    fun `test known profiles ignore profile files outside the project`() {
+        // The file name index is shared by every open project and covers libraries: a library stands in for another project.
+        val dir = com.intellij.openapi.util.io.FileUtil.createTempDirectory("tendril-other", null)
+        java.io.File(dir, "application-elsewhere.yml").writeText("x: 1")
+        val root = com.intellij.openapi.vfs.LocalFileSystem.getInstance().refreshAndFindFileByIoFile(dir)!!
+        com.intellij.openapi.roots.ModuleRootModificationUtil.addModuleLibrary(module, "other-project", listOf(root.url), emptyList())
+        try {
+            yaml("application-here.yml", "y: 1")
+            assertNotEmpty(com.intellij.psi.search.FilenameIndex.getVirtualFilesByName(
+                "application-elsewhere.yml", com.intellij.psi.search.GlobalSearchScope.allScope(project),
+            ))
+            val profiles = ConfigProfiles.knownProfiles(project)
+            assertTrue(profiles.toString(), "here" in profiles)
+            assertFalse(profiles.toString(), "elsewhere" in profiles)
+        } finally {
+            com.intellij.openapi.roots.ModuleRootModificationUtil.updateModel(module) { model ->
+                model.moduleLibraryTable.getLibraryByName("other-project")?.let { model.moduleLibraryTable.removeLibrary(it) }
+            }
+        }
+    }
+
     fun `test profile expressions yield the plain profile names`() {
         yaml("application.yml", "---\nspring:\n  config:\n    activate:\n      on-profile: \"cloud & !local\"\nz: 1")
         val profiles = ConfigProfiles.knownProfiles(project)

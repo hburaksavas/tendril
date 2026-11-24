@@ -24,7 +24,6 @@ import com.intellij.util.concurrency.AppExecutorUtil
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import com.intellij.util.ui.tree.TreeUtil
-import dev.tendril.config.ConfigProfiles
 import dev.tendril.descriptorOf
 import dev.tendril.readInBackground
 import dev.tendril.config.TendrilSettings
@@ -131,9 +130,10 @@ internal class FeignPanel(
 
     fun refresh() {
         ReadAction.nonBlocking<Pair<List<String>, List<FeignClientInfo>>> {
-            val known = listOf(DEFAULT) + ConfigProfiles.knownProfiles(project)
+            val defs = FeignScanner.cached(project)
             val profile = FeignResolver.selectedProfile(project)
-            known to FeignScanner.cached(project).map { FeignResolver.resolve(project, it, profile) }
+            val known = listOf(DEFAULT) + (choosableProfiles(defs) + listOfNotNull(profile)).distinct().sorted()
+            known to defs.map { FeignResolver.resolve(project, it, profile) }
         }
             .inSmartMode(project)
             .expireWith(this)
@@ -303,12 +303,21 @@ internal class FeignPanel(
             ?.createNotification(message, type)?.notify(project)
     }
 
+    /**
+     * Profiles that change an address: of a Feign client, or of the application itself (server port or context path).
+     * Profiles that only set other keys would show the same addresses as the default, so they are not offered.
+     */
+    private fun choosableProfiles(defs: List<FeignClientDef>): List<String> {
+        val ownDefault = EndpointRequests.baseUrl(project, null, fallback = false)
+        return FeignResolver.addressProfiles(project, defs) { EndpointRequests.baseUrl(project, it, fallback = false) != ownDefault }
+    }
+
     /** Writes `http-client.env.json` (address per profile) and, if missing, a private file with token placeholders. */
     private fun generateEnvFile() {
         ReadAction.nonBlocking<Map<String, Map<String, String>>> {
             val defs = FeignScanner.cached(project)
             val result = linkedMapOf<String, Map<String, String>>()
-            for (profile in listOf<String?>(null) + ConfigProfiles.knownProfiles(project)) {
+            for (profile in listOf<String?>(null) + choosableProfiles(defs)) {
                 val vars = linkedMapOf<String, String>()
                 for (def in defs) {
                     val info = FeignResolver.resolve(project, def, profile)

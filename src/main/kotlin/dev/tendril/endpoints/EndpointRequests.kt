@@ -51,10 +51,19 @@ object EndpointRequests {
         com.intellij.openapi.fileEditor.FileEditorManager.getInstance(project).openFile(file, true)
     }
 
-    /** http://localhost:<server.port or 8080><server.servlet.context-path>, read from the project's config files. */
-    fun baseUrl(project: Project): String {
-        val port = configValue(project, "server.port")?.takeIf { it.all(Char::isDigit) } ?: "8080"
-        val context = configValue(project, "server.servlet.context-path")?.trim('/')?.takeIf { it.isNotEmpty() }
+    /**
+     * http://localhost:<server.port or 8080><server.servlet.context-path>, read from the project's config files for the
+     * chosen profile. With [fallback] false only the config of [selected] (null: the default config) is read.
+     */
+    fun baseUrl(
+        project: Project,
+        selected: String? = dev.tendril.feign.FeignResolver.selectedProfile(project),
+        fallback: Boolean = true,
+    ): String {
+        val profiles = ConfigProfiles.effectiveProfiles(project, selected)
+        fun value(key: String) = dev.tendril.feign.FeignResolver.valueFor(ConfigNavigation.allConfigElements(project, key), profiles, fallback)
+        val port = value("server.port")?.takeIf { it.all(Char::isDigit) } ?: "8080"
+        val context = value("server.servlet.context-path")?.trim('/')?.takeIf { it.isNotEmpty() }
         return "http://localhost:$port" + (context?.let { "/$it" } ?: "")
     }
 

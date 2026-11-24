@@ -57,16 +57,66 @@ object FeignResolver {
     fun selectProfile(project: Project, profile: String?) =
         PropertiesComponent.getInstance(project).setValue(PROFILE_KEY, profile.orEmpty())
 
+    /**
+     * Resolves [def] for the [selected] profile (null: the default config with its `spring.profiles.active`). Config is
+     * read from the application modules that the client's module belongs to. When no profile is in effect at all and
+     * the default config gives no address, the address of the first profile (by name) that yields one is used, and
+     * the source says so: values are never mixed from several profiles.
+     */
     fun resolve(project: Project, def: FeignClientDef, selected: String?): FeignClientInfo {
-        val profile = ConfigProfiles.effectiveProfiles(project, selected)
-        val (name, _) = substituteIn(project, def.name, profile)
-        val (path, _) = substituteIn(project, def.path, profile)
-        val (url, urlUnresolved) = substituteIn(project, def.url, profile)
+        val from = def.cls.element
+        val profiles = ConfigProfiles.effectiveProfiles(project, selected, from)
+        val info = resolveWith(def, Lookup(project, from, profiles))
+        if (profiles.isNotEmpty() || info.resolution.url != null) return info
+        for (profile in ConfigProfiles.knownProfiles(project)) {
+            val candidate = resolveWith(def, Lookup(project, from, ConfigProfiles.effectiveProfiles(project, profile, from)))
+            val r = candidate.resolution
+            if (r.url != null) {
+                return FeignClientInfo(def, candidate.name, candidate.path, FeignResolution(r.url, "${r.source}, only in profile $profile"))
+            }
+        }
+        return info
+    }
+
+    /**
+     * The address of [def] when exactly the config of [selected] (null: the default config) is read, without falling
+     * back to other profiles. Used to tell which profiles change an address.
+     */
+    internal fun strictAddress(project: Project, def: FeignClientDef, selected: String?): String? {
+        val from = def.cls.element
+        return resolveWith(def, Lookup(project, from, ConfigProfiles.effectiveProfiles(project, selected, from))).resolution.url
+    }
+
+    /**
+     * The profiles worth choosing: those under which at least one client resolves to another address than under the
+     * default config, or for which [extra] says so (the application's own address). Sorted by name. Needs a read action.
+     */
+    fun addressProfiles(project: Project, defs: List<FeignClientDef>, extra: (String) -> Boolean = { false }): List<String> {
+        val defaults = defs.map { strictAddress(project, it, null) }
+        return ConfigProfiles.knownProfiles(project).filter { profile ->
+            extra(profile) || defs.indices.any { i -> strictAddress(project, defs[i], profile) != defaults[i] }
+        }
+    }
+
+    /** Config lookups for one client: the profiles in effect and the modules whose config applies. */
+    private class Lookup(val project: Project, from: PsiElement?, val profiles: List<String>) {
+        private val scope = ConfigNavigation.scopeOf(from)
+        fun elements(key: String): List<PsiElement> = scope(ConfigNavigation.allConfigElements(project, key))
+        fun entries(): List<Pair<String, List<PsiElement>>> =
+            ConfigNavigation.allEntries(project).map { (key, elements) -> key to scope(elements) }
+        fun value(key: String): String? = value(elements(key))
+        fun value(elements: List<PsiElement>): String? = valueFor(elements, profiles, fallback = false)
+    }
+
+    private fun resolveWith(def: FeignClientDef, lookup: Lookup): FeignClientInfo {
+        val (name, _) = substituteIn(def.name, lookup)
+        val (path, _) = substituteIn(def.path, lookup)
+        val (url, urlUnresolved) = substituteIn(def.url, lookup)
 
         val resolution = if (def.url.isNotBlank() && url.isNotBlank() && urlUnresolved.isEmpty()) {
             FeignResolution(withScheme(url), if (def.url == url) "url attribute" else "url attribute ${def.url}")
         } else {
-            byName(project, name, profile) ?: FeignResolution(
+            byName(name, lookup) ?: FeignResolution(
                 null,
                 if (def.url.isBlank()) "no url, resolved by discovery at runtime" else "url cannot be resolved",
                 urlUnresolved,
@@ -75,8 +125,9 @@ object FeignResolver {
         return FeignClientInfo(def, name, path, resolution)
     }
 
-    private fun byName(project: Project, name: String, profile: List<String>): FeignResolution? {
+    private fun byName(name: String, lookup: Lookup): FeignResolution? {
         if (name.isBlank()) return null
+        val project = lookup.project
 
         TendrilSettings.getInstance(project).state.serviceUrls[name]?.takeIf { it.isNotBlank() }?.let {
             return FeignResolution(withScheme(it), "Tendril address table for '$name'")
@@ -84,8 +135,8 @@ object FeignResolver {
 
         for (template in nameKeys(project)) {
             val key = template.replace("{name}", name)
-            val raw = valueFor(ConfigNavigation.allConfigElements(project, key), profile) ?: continue
-            val (resolved, unresolved) = substituteIn(project, raw, profile)
+            val raw = lookup.value(key) ?: continue
+            val (resolved, unresolved) = substituteIn(raw, lookup)
             val first = resolved.split(',').first().trim()
             if (unresolved.isEmpty() && first.isNotEmpty()) return FeignResolution(withScheme(first), "config key $key")
         }
@@ -93,8 +144,7 @@ object FeignResolver {
         // SimpleDiscoveryClient's host/port/secure form (instead of a single uri)
         val instance = "$SIMPLE_INSTANCES.$name[0]"
         fun part(suffix: String): String? =
-            valueFor(ConfigNavigation.allConfigElements(project, "$instance.$suffix"), profile)
-                ?.let { substituteIn(project, it, profile) }?.takeIf { it.second.isEmpty() }?.first
+            lookup.value("$instance.$suffix")?.let { substituteIn(it, lookup) }?.takeIf { it.second.isEmpty() }?.first
         part("host")?.let { host ->
             val secure = part("secure")?.toBooleanStrictOrNull() == true
             val port = part("port")?.takeIf { p -> p.all(Char::isDigit) }
@@ -107,12 +157,12 @@ object FeignResolver {
         // Last resort: any key that mentions the service and holds an http(s) address.
         val needle = name.lowercase().filter { it.isLetterOrDigit() }
         if (needle.length >= 3) {
-            val candidates = ConfigNavigation.allEntries(project).entries
-                .filter { it.key.replace(".", "").contains(needle) }
-                .sortedBy { it.key.length }
+            val candidates = lookup.entries()
+                .filter { it.first.replace(".", "").contains(needle) && it.second.isNotEmpty() }
+                .sortedBy { it.first.length }
             for ((_, elements) in candidates) {
-                val raw = valueFor(elements, profile) ?: continue
-                val (resolved, unresolved) = substituteIn(project, raw, profile)
+                val raw = lookup.value(elements) ?: continue
+                val (resolved, unresolved) = substituteIn(raw, lookup)
                 if (unresolved.isEmpty() && (resolved.startsWith("http://") || resolved.startsWith("https://"))) {
                     return FeignResolution(resolved.trimEnd('/'), "guessed from config key ${keyText(elements.first())}")
                 }
@@ -122,10 +172,14 @@ object FeignResolver {
     }
 
     /** Replaces `${key}` / `${key:default}` using the config files; unresolved keys are returned and left in place. */
-    fun substitute(project: Project, text: String, selected: String?): Pair<String, List<String>> =
-        substituteIn(project, text, ConfigProfiles.effectiveProfiles(project, selected))
+    fun substitute(project: Project, text: String, selected: String?): Pair<String, List<String>> {
+        val profiles = ConfigProfiles.effectiveProfiles(project, selected)
+        return substituteWith(text) { key -> valueFor(ConfigNavigation.allConfigElements(project, key), profiles) }
+    }
 
-    private fun substituteIn(project: Project, text: String, profile: List<String>): Pair<String, List<String>> {
+    private fun substituteIn(text: String, lookup: Lookup): Pair<String, List<String>> = substituteWith(text, lookup::value)
+
+    private fun substituteWith(text: String, value: (String) -> String?): Pair<String, List<String>> {
         if ('$' !in text) return text to emptyList()
         val unresolved = LinkedHashSet<String>()
         var current = text
@@ -133,9 +187,7 @@ object FeignResolver {
             val next = PLACEHOLDER.replace(current) { m ->
                 val key = m.groupValues[1].trim()
                 val default = m.groups[2]?.value
-                valueFor(ConfigNavigation.allConfigElements(project, key), profile)
-                    ?: default
-                    ?: m.value.also { unresolved += key }
+                value(key) ?: default ?: m.value.also { unresolved += key }
             }
             if (next == current) return current to unresolved.toList()
             current = next
@@ -167,15 +219,20 @@ object FeignResolver {
         return out.toList()
     }
 
-    /** The profile-specific value if the profile defines one, else the default (profile-less) value. */
-    internal fun valueFor(elements: List<PsiElement>, profiles: List<String>): String? {
+    /**
+     * The profile-specific value if the profile defines one, else the default (profile-less) value. With [fallback],
+     * when no profile is in effect and the default config says nothing, the value of the first profile by name (then by
+     * file path) is used: a value that only a profile file defines beats none, and the pick is the same every time.
+     */
+    internal fun valueFor(elements: List<PsiElement>, profiles: List<String>, fallback: Boolean = true): String? {
         // later profiles win; the default (profile-less) value is the last resort
         val ordered = profiles.asReversed().flatMap { p -> elements.filter { ConfigProfiles.profileOf(it) == p } } +
             elements.filter { ConfigProfiles.profileOf(it) == null }
         ordered.firstNotNullOfOrNull { valueOf(it) }?.let { return it }
-        // No profile is in effect and the default config says nothing: a value that only a profile file defines
-        // beats no address at all.
-        return if (profiles.isEmpty()) elements.firstNotNullOfOrNull { valueOf(it) } else null
+        if (!fallback || profiles.isNotEmpty()) return null
+        return elements.mapNotNull { e -> ConfigProfiles.profileOf(e)?.let { it to e } }
+            .sortedWith(compareBy({ it.first }, { it.second.containingFile?.virtualFile?.path.orEmpty() }))
+            .firstNotNullOfOrNull { valueOf(it.second) }
     }
 
     private fun valueOf(e: PsiElement): String? = when (e) {

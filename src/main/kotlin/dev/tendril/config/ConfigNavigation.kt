@@ -79,10 +79,17 @@ object ConfigNavigation {
      * Key elements ([YAMLKeyValue] / [Property]) for [key], as seen from the Java element [from]. Code in a module is
      * configured by the yml of that module or of any application module that depends on it.
      */
-    fun configElements(project: Project, key: String, from: PsiElement): List<PsiElement> {
-        val all = keyIndex(project)[MetadataIndex.normalize(key)].orEmpty()
-        val origin = ModuleUtilCore.findModuleForPsiElement(from) ?: return all
-        return prioritize(all, origin, ModuleContext.withDependents(origin))
+    fun configElements(project: Project, key: String, from: PsiElement): List<PsiElement> =
+        scopeOf(from)(keyIndex(project)[MetadataIndex.normalize(key)].orEmpty())
+
+    /**
+     * Narrows config elements to those that configure [from]'s module, as [configElements] does; keeps everything when
+     * [from] is null, has no module, or no element is in a related module. Compute once and apply to many keys.
+     */
+    fun scopeOf(from: PsiElement?): (List<PsiElement>) -> List<PsiElement> {
+        val origin = from?.let { ModuleUtilCore.findModuleForPsiElement(it) } ?: return { it }
+        val allowed = ModuleContext.withDependents(origin)
+        return { prioritize(it, origin, allowed) }
     }
 
     /** All config-file elements for [key] regardless of module. */

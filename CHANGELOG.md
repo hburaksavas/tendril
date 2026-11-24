@@ -4,6 +4,12 @@ All notable changes to Tendril. The section of the version being built becomes t
 
 ## [Unreleased]
 
+### Fixes
+- The profile list of the Endpoints and Feign windows no longer shows profiles from other open projects or from libraries
+- The profile list only offers profiles that change an address (of a Feign client, or the application's port or context path)
+- Feign addresses in a multi-module project are read from the config of the client's own application module, including `spring.profiles.active`
+- With "Default" and no active profile, an address that only profile files define comes from one profile, the first by name, and its source says which; values are no longer mixed from several profiles or picked in index order
+
 ## [0.7.0]
 
 ### Spring Data JPA

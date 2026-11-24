@@ -3,6 +3,11 @@ package dev.tendril.config
 import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiElement
 import com.intellij.psi.search.FilenameIndex
+import com.intellij.psi.search.GlobalSearchScope
+import com.intellij.openapi.roots.ProjectRootModificationTracker
+import com.intellij.psi.util.CachedValueProvider
+import com.intellij.psi.util.CachedValuesManager
+import com.intellij.psi.util.PsiModificationTracker
 import com.intellij.psi.util.PsiTreeUtil
 import org.jetbrains.yaml.psi.YAMLDocument
 import org.jetbrains.yaml.psi.YAMLKeyValue
@@ -54,16 +59,19 @@ object ConfigProfiles {
     private fun unwrapDefault(value: String): String =
         Regex("""\$\{[^:}]+:([^}]*)}""").matchEntire(value)?.groupValues?.get(1)?.trim() ?: value
 
-    /** Members of the profile group [profile] (`spring.profiles.group.<profile>`), in declaration order. */
-    fun groupMembers(project: Project, profile: String): List<String> =
-        ConfigNavigation.allConfigElements(project, "spring.profiles.group.$profile")
-            .filter { profileOf(it) == null }
-            .flatMap { valuesOf(it) }
-            .distinct()
+    /**
+     * Members of the profile group [profile] (`spring.profiles.group.<profile>`), in declaration order. With [from], only
+     * the config of the application modules that [from]'s module belongs to is read.
+     */
+    fun groupMembers(project: Project, profile: String, from: PsiElement? = null): List<String> =
+        defaultValues(project, "spring.profiles.group.$profile", ConfigNavigation.scopeOf(from))
 
-    /** Profiles `spring.profiles.active` names in the default config, or none. */
-    fun activeByDefault(project: Project): List<String> =
-        ConfigNavigation.allConfigElements(project, "spring.profiles.active")
+    /** Profiles `spring.profiles.active` names in the default config, or none. See [groupMembers] for [from]. */
+    fun activeByDefault(project: Project, from: PsiElement? = null): List<String> =
+        defaultValues(project, "spring.profiles.active", ConfigNavigation.scopeOf(from))
+
+    private fun defaultValues(project: Project, key: String, scope: (List<PsiElement>) -> List<PsiElement>): List<String> =
+        scope(ConfigNavigation.allConfigElements(project, key))
             .filter { profileOf(it) == null }
             .flatMap { valuesOf(it) }
             .distinct()
@@ -72,24 +80,41 @@ object ConfigProfiles {
      * The profiles that are in effect when [selected] is chosen, lowest priority first: the profile itself followed by
      * the members of its group (`spring.profiles.group`), recursively. Without a selection the profiles named by
      * `spring.profiles.active` in the default config are used, so no choice is needed when the project already says
-     * which profile runs. Needs a read action.
+     * which profile runs. With [from], the active profile and groups come from the config of [from]'s application
+     * module rather than from any module of the project. Needs a read action.
      */
-    fun effectiveProfiles(project: Project, selected: String?): List<String> {
-        val roots = if (selected != null) listOf(selected) else activeByDefault(project)
+    fun effectiveProfiles(project: Project, selected: String?, from: PsiElement? = null): List<String> {
+        val scope = ConfigNavigation.scopeOf(from)
+        val roots = if (selected != null) listOf(selected) else defaultValues(project, "spring.profiles.active", scope)
         val result = LinkedHashSet<String>()
         fun add(profile: String, depth: Int) {
             if (!result.add(profile) || depth > 5) return
-            groupMembers(project, profile).forEach { add(it, depth + 1) }
+            defaultValues(project, "spring.profiles.group.$profile", scope).forEach { add(it, depth + 1) }
         }
         roots.forEach { add(it, 0) }
         return result.toList()
     }
 
-    /** Profile names known from application-<profile> file names and `on-profile` sections. Needs a read action. */
-    fun knownProfiles(project: Project): Set<String> {
+    /**
+     * Profile names known from application-<profile> file names and `on-profile` sections, sorted. Cached until a file
+     * or the project structure changes. Needs a read action.
+     */
+    fun knownProfiles(project: Project): Set<String> =
+        CachedValuesManager.getManager(project).getCachedValue(project) {
+            CachedValueProvider.Result.create(
+                scanProfiles(project),
+                PsiModificationTracker.getInstance(project),
+                ProjectRootModificationTracker.getInstance(project),
+            )
+        }
+
+    private fun scanProfiles(project: Project): Set<String> {
         val result = sortedSetOf<String>()
+        // The file name index is shared by every open project: keep only names that have a file in this one.
+        val scope = GlobalSearchScope.projectScope(project)
         for (name in FilenameIndex.getAllFilenames(project)) {
-            PROFILE_FILE.matchEntire(name)?.let { result += it.groupValues[1] }
+            val match = PROFILE_FILE.matchEntire(name) ?: continue
+            if (FilenameIndex.getVirtualFilesByName(name, scope).isNotEmpty()) result += match.groupValues[1]
         }
         for (key in DOCUMENT_PROFILE_KEYS) {
             for (e in ConfigNavigation.allConfigElements(project, key)) {
@@ -98,6 +123,6 @@ object ConfigProfiles {
                     .filterTo(result) { it.isNotEmpty() }
             }
         }
-        return result
+        return java.util.Collections.unmodifiableSortedSet(result)
     }
 }

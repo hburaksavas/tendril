@@ -286,4 +286,45 @@ class FeignResolverTest : SpringTestCase() {
         yaml("application-local.yml", "clients:\n  inventory:\n    url: http://local-only")
         assertEquals("http://local-only", resolve(null).resolution.url)
     }
+
+    // ---- default without an active profile ----
+
+    fun `test without an active profile the first profile by name gives the address and is named`() {
+        client("""@FeignClient(name = "inventory", url = "${'$'}{clients.inventory.url}")""")
+        yaml("application-zeta.yml", "clients:\n  inventory:\n    url: http://zeta")
+        yaml("application-alpha.yml", "clients:\n  inventory:\n    url: http://alpha")
+        val r = resolve(null).resolution
+        assertEquals("http://alpha", r.url)
+        assertTrue(r.source, r.source.endsWith("only in profile alpha"))
+    }
+
+    fun `test without an active profile values are not mixed from several profiles`() {
+        client("""@FeignClient(name = "inventory", url = "http://${'$'}{inv.host}:${'$'}{inv.port}")""")
+        yaml("application-alpha.yml", "inv:\n  host: alpha-host")
+        yaml("application-beta.yml", "inv:\n  port: 9002")
+        assertNull(resolve(null).resolution.url)
+        yaml("application-gamma.yml", "inv:\n  host: gamma-host\n  port: 9003")
+        assertEquals("http://gamma-host:9003", resolve(null).resolution.url)
+    }
+
+    fun `test an active profile in the default config is not overridden by the fallback`() {
+        client("""@FeignClient(name = "inventory", url = "${'$'}{clients.inventory.url}")""")
+        yaml("application.yml", "spring:\n  profiles:\n    active: zeta")
+        yaml("application-alpha.yml", "clients:\n  inventory:\n    url: http://alpha")
+        yaml("application-zeta.yml", "other: 1")
+        assertNull(resolve(null).resolution.url)
+    }
+
+    // ---- profiles worth choosing ----
+
+    fun `test only profiles that change an address are offered`() {
+        client("""@FeignClient(name = "inventory", url = "${'$'}{clients.inventory.url}")""")
+        yaml("application.yml", "clients:\n  inventory:\n    url: http://default")
+        yaml("application-dev.yml", "clients:\n  inventory:\n    url: http://dev")
+        yaml("application-same.yml", "clients:\n  inventory:\n    url: http://default")
+        yaml("application-logging.yml", "logging:\n  level:\n    root: debug")
+        val defs = FeignScanner.scan(project)
+        assertEquals(listOf("dev"), FeignResolver.addressProfiles(project, defs).filter { it in setOf("dev", "same", "logging") })
+        assertTrue("logging" in FeignResolver.addressProfiles(project, defs) { it == "logging" })
+    }
 }
