@@ -4,6 +4,8 @@ All notable changes to Tendril. The section of the version being built becomes t
 
 ## [Unreleased]
 
+## [0.7.1]
+
 ### Fixes
 - The profile list of the Endpoints and Feign windows no longer shows profiles from other open projects or from libraries
 - The profile list only offers profiles that change an address (of a Feign client, or the application's port or context path)
