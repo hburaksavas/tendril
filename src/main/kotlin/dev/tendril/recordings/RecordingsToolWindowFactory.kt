@@ -45,7 +45,6 @@ import dev.tendril.http.HttpResult
 import dev.tendril.http.ParsedRequest
 import java.awt.BorderLayout
 import java.awt.FlowLayout
-import java.awt.Font
 import java.awt.datatransfer.StringSelection
 import java.net.URI
 import java.text.SimpleDateFormat
@@ -236,7 +235,10 @@ internal class RecordingPane(
         toolTipText = "Show HTTP 4xx and 5xx responses and failed requests"
     }
     private val renderer = PainterListRenderer<Recording>(rightAligned = true, bind = ::bindRow)
-    private val summary = SimpleColoredComponent()
+    private val summary = SimpleColoredComponent().apply {
+        val labelFont = com.intellij.util.ui.UIUtil.getLabelFont()
+        font = labelFont.deriveFont(labelFont.size2D + 2f)
+    }
     private val facts = SimpleColoredComponent()
     private val request = Editors.viewer(project)
     private val requestHeaders = Editors.viewer(project)
@@ -252,6 +254,7 @@ internal class RecordingPane(
     private val hint = JBLabel(" ")
 
     init {
+        list.font = list.font.deriveFont(java.awt.Font.PLAIN)
         list.cellRenderer = renderer
         updateEmptyText()
         errorsOnly.addItemListener { refreshList() }
@@ -292,7 +295,7 @@ internal class RecordingPane(
             add(facts.apply { border = JBUI.Borders.emptyTop(2) }, BorderLayout.CENTER)
         }
         val header = JPanel(BorderLayout()).apply {
-            border = JBUI.Borders.compound(JBUI.Borders.customLineBottom(JBColor.border()), JBUI.Borders.empty(10, 12, 8, 12))
+            border = JBUI.Borders.empty(10, 12, 6, 12)
             add(titles, BorderLayout.NORTH)
             add(actions.apply { border = JBUI.Borders.emptyTop(6) }, BorderLayout.SOUTH)
         }
@@ -389,7 +392,7 @@ internal class RecordingPane(
     private fun bindRow(p: RowPainter, r: Recording) {
         p.badge = badgeOf(r)
         p.badgeColor = if (kind == RecordingKind.MESSAGE) Palette.messageTransport(r.transport) else Palette.method(r.method)
-        p.primary = primaryOf(r)
+        p.primary = primaryOf(r).map { Fragment(it.text, it.color, bold = p.selected) }
         p.secondary = buildList {
             when {
                 r.status != null -> add(Fragment("${r.status}", Palette.status(r.status), bold = true))
@@ -447,16 +450,16 @@ internal class RecordingPane(
                 summary.append("${r.method}  ", SimpleTextAttributes(SimpleTextAttributes.STYLE_BOLD, Palette.method(r.method)))
                 summary.append(RecordingText.shortUrl(r, kind), SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
                 r.status?.let {
-                    summary.append(" · $it", SimpleTextAttributes(SimpleTextAttributes.STYLE_BOLD, Palette.status(it)))
+                    facts.append("$it", SimpleTextAttributes(SimpleTextAttributes.STYLE_BOLD, Palette.status(it)))
+                    facts.append("  ·  ", SimpleTextAttributes.GRAYED_ATTRIBUTES)
                 }
-                summary.append(" · ${r.durationMs} ms", SimpleTextAttributes.GRAYED_ATTRIBUTES)
             }
             val line = listOfNotNull(
+                r.durationMs.takeIf { kind != RecordingKind.MESSAGE || it > 0 }?.let { "$it ms" },
                 r.handler?.let { "handled by $it" }, r.client?.let { "client $it" },
-                r.durationMs.takeIf { kind == RecordingKind.MESSAGE && it > 0 }?.let { "$it ms" },
                 r.flow.takeIf { it > 0 }?.let { "flow $it" },
                 RecordingText.TIME.format(Date(r.time)),
-            ).joinToString("      ")
+            ).joinToString("  ·  ")
             facts.append(line, SimpleTextAttributes.GRAYED_ATTRIBUTES)
         }
         val requestText = r?.let { RecordingText.request(it) }.orEmpty()

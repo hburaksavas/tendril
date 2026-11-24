@@ -9,6 +9,11 @@ All notable changes to Tendril. The section of the version being built becomes t
 - Inspection: unknown entity or attribute in a JPQL `@Query`. Inherited attributes, `#{#entityName}` and Hibernate's `id`, `size` and subtype attributes are understood; native queries are not checked against entities
 - Inspection: `@Query` parameters that are not bound (`:name` or `?n` with no method parameter, named and positional mixed) or not used, in JPQL and native queries; `Pageable`, `Sort` and SpEL parameters are taken into account
 
+### Changed
+- HTTP Response: response headers fold behind a "Show headers (n)" toggle (open by default for up to three headers), the body gets the rest of the window
+- Feign clients show their address on a second line; the profile chooser is labelled
+- Recordings: larger request summary, status and duration moved to the facts line, selected row in bold
+
 ## [0.6.0]
 
 ### Recordings

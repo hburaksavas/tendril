@@ -160,7 +160,7 @@ internal class EndpointsPanel(
         })
 
         val top = JPanel(BorderLayout()).apply {
-            border = dev.tendril.ui.Chrome.topRow()
+            border = dev.tendril.ui.Chrome.topRow(5, 8)
             add(
                 toolbarOf(
                     "TendrilEndpoints", this@EndpointsPanel,

@@ -89,6 +89,7 @@ internal class RowPainter : JComponent() {
     /** Width of the main text column, so the secondary text starts at the same x in every row. */
     var primaryColumn: Int = 0
     var secondary: List<Fragment> = emptyList()
+    var secondaryOnNextLine: Boolean = false
     var selected: Boolean = false
     var selectedForeground: Color = Color.WHITE
     var normalForeground: Color = Color.BLACK
@@ -105,7 +106,7 @@ internal class RowPainter : JComponent() {
     }
 
     override fun getPreferredSize(): Dimension =
-        Dimension(if (rightAligned) JBUI.scale(120) else run(null) + JBUI.scale(12), JBUI.scale(28))
+        Dimension(if (rightAligned) JBUI.scale(120) else run(null) + JBUI.scale(12), JBUI.scale(if (secondaryOnNextLine) 44 else 28))
 
     override fun paintComponent(g: Graphics) {
         val g2 = g as Graphics2D
@@ -155,6 +156,12 @@ internal class RowPainter : JComponent() {
             draw(g, fit(primary, room, regular, bold), start, baseline, regular, bold, base)
             draw(g, secondary, secondaryX, baseline, regular, bold, base)
             return rightAlignedWidth
+        }
+        if (secondaryOnNextLine) {
+            val firstBaseline = baseline - (regular.height + JBUI.scale(2)) / 2
+            val primaryEnd = draw(g, primary, start, firstBaseline, regular, bold, base)
+            val secondaryEnd = draw(g, secondary, start, firstBaseline + regular.height + JBUI.scale(2), regular, bold, base)
+            return maxOf(primaryEnd, secondaryEnd)
         }
         x = draw(g, primary, x, baseline, regular, bold, base)
         if (secondary.isNotEmpty()) {
@@ -231,6 +238,7 @@ internal class PainterTreeRenderer(private val bind: (RowPainter, Any?) -> Unit)
         painter.selected = selected
         painter.selectedForeground = UIUtil.getTreeSelectionForeground(hasFocus)
         painter.normalForeground = UIUtil.getTreeForeground()
+        painter.secondaryOnNextLine = false
         bind(painter, (value as? javax.swing.tree.DefaultMutableTreeNode)?.userObject)
         return painter
     }

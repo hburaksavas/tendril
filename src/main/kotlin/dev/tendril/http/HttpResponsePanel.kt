@@ -27,6 +27,7 @@ import java.awt.BorderLayout
 import java.awt.FlowLayout
 import java.awt.Font
 import javax.swing.JPanel
+import javax.swing.JToggleButton
 
 /** Something that can open a request for editing. */
 internal interface RequestHost {
@@ -73,6 +74,13 @@ internal class HttpResponsePanel(private val project: Project) : JPanel(BorderLa
     private val status = SimpleColoredComponent()
     private val body = Editors.viewer(project)
     private val headers = Editors.viewer(project)
+    private val headerToggle = JToggleButton("Headers").apply {
+        horizontalAlignment = JToggleButton.LEFT
+        isContentAreaFilled = false
+        border = dev.tendril.ui.Chrome.topRow(3, 8)
+        isVisible = false
+    }
+    private var headerCount = 0
     private var updatingEnvironments = false
 
     init {
@@ -92,7 +100,28 @@ internal class HttpResponsePanel(private val project: Project) : JPanel(BorderLa
             add(left, BorderLayout.EAST)
         }
         add(header, BorderLayout.NORTH)
-        add(dev.tendril.ui.Sections.stacked("tendril.http.sections", "Headers", headers, "Body", body), BorderLayout.CENTER)
+        val headerSection = JPanel(BorderLayout()).apply {
+            add(headerToggle, BorderLayout.NORTH)
+            add(headers, BorderLayout.CENTER)
+        }
+        headers.isVisible = false
+        headerToggle.addActionListener {
+            updateHeaderVisibility()
+            headerSection.revalidate()
+            headerSection.repaint()
+        }
+        val response = JPanel(BorderLayout()).apply {
+            add(headerSection, BorderLayout.NORTH)
+            add(JPanel(BorderLayout()).apply {
+                add(JBLabel("BODY").apply {
+                    foreground = JBColor.GRAY
+                    font = com.intellij.util.ui.UIUtil.getLabelFont(com.intellij.util.ui.UIUtil.FontSize.MINI)
+                    border = dev.tendril.ui.Chrome.topRow(3, 8)
+                }, BorderLayout.NORTH)
+                add(body, BorderLayout.CENTER)
+            }, BorderLayout.CENTER)
+        }
+        add(response, BorderLayout.CENTER)
         showHint("Open a .http file and press Ctrl+Enter, or use the arrow in its gutter. The response appears here.")
     }
 
@@ -139,6 +168,20 @@ internal class HttpResponsePanel(private val project: Project) : JPanel(BorderLa
         val pretty = HttpExecutor.pretty(r.body).take(MAX_BODY)
         Editors.show(body, pretty, Editors.typeOf(pretty))
         Editors.show(headers, r.headers.joinToString("\n") { "${it.first}: ${it.second}" }, PlainTextFileType.INSTANCE)
+        headerCount = r.headers.size
+        headerToggle.isVisible = headerCount > 0
+        headerToggle.isSelected = headerCount in 1..3
+        updateHeaderVisibility()
+        val lineHeight = headers.editor?.lineHeight ?: headers.getFontMetrics(headers.font).height
+        headers.preferredSize = java.awt.Dimension(0, lineHeight * headerCount.coerceAtMost(6) + JBUI.scale(6))
+        revalidate()
+        repaint()
+    }
+
+    private fun updateHeaderVisibility() {
+        val expanded = headerToggle.isSelected
+        headerToggle.text = if (expanded) "Hide headers ($headerCount)" else "Show headers ($headerCount)"
+        headers.isVisible = expanded
     }
 
     private fun showError(message: String) {
@@ -146,6 +189,8 @@ internal class HttpResponsePanel(private val project: Project) : JPanel(BorderLa
         status.append(message, SimpleTextAttributes.ERROR_ATTRIBUTES)
         Editors.show(body, "", PlainTextFileType.INSTANCE)
         Editors.show(headers, "", PlainTextFileType.INSTANCE)
+        headerToggle.isVisible = false
+        headers.isVisible = false
     }
 
     private fun showHint(message: String) {

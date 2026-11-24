@@ -76,6 +76,7 @@ internal class FeignPanel(
         tree.isRootVisible = false
         tree.showsRootHandles = true
         tree.cellRenderer = renderer
+        tree.rowHeight = 0
         search.textEditor.emptyText.text = "Filter by client, address or path"
         tree.addMouseListener(object : MouseAdapter() {
             override fun mouseClicked(e: MouseEvent) {
@@ -113,10 +114,11 @@ internal class FeignPanel(
                     },
                 ),
             )
+            add(JBLabel("Profile").apply { labelFor = profiles })
             add(profiles)
         }
         val top = JPanel(BorderLayout()).apply {
-            border = dev.tendril.ui.Chrome.topRow()
+            border = dev.tendril.ui.Chrome.topRow(5, 8)
             add(left, BorderLayout.WEST)
             add(search, BorderLayout.CENTER)
         }
@@ -196,6 +198,7 @@ internal class FeignPanel(
             is ClientNode -> {
                 val info = item.info
                 p.icon = AllIcons.Nodes.Interface
+                p.secondaryOnNextLine = true
                 val url = info.resolution.url
                 if (url != null) {
                     p.primary = listOf(Fragment(info.name.ifBlank { info.def.className }, bold = true), Fragment("   "), Fragment(url))
