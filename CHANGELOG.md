@@ -4,6 +4,8 @@ All notable changes to Tendril. The section of the version being built becomes t
 
 ## [Unreleased]
 
+## [0.7.0]
+
 ### Spring Data JPA
 - `@Query` strings know your entities (Java and Kotlin, jakarta and javax): completion of entity names, of attributes after `alias.` (through joins and embeddables) and of `:parameter` names; Ctrl+Click to the entity, attribute or method parameter; renaming one of them updates the query
 - Inspection: unknown entity or attribute in a JPQL `@Query`. Inherited attributes, `#{#entityName}` and Hibernate's `id`, `size` and subtype attributes are understood; native queries are not checked against entities
