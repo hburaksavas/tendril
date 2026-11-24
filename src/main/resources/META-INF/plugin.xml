@@ -10,6 +10,8 @@
             and modules.</li>
         <li><b>Beans</b>: gutter icons between injection points and bean definitions, inspections for missing, ambiguous and
             circular beans, a Spring Beans tool window.</li>
+        <li><b>Spring Data JPA</b>: completion, navigation and rename for entities, attributes and parameters inside
+            <code>@Query</code>, with inspections for unknown entities and attributes and for unbound or unused parameters.</li>
         <li><b>Endpoints</b>: the endpoints your application serves and the Feign clients it calls, with the address each
             client resolves to per profile.</li>
         <li><b>HTTP client</b>: send requests from <code>.http</code> files or straight from an endpoint or Feign call, with
@@ -137,6 +139,18 @@
         <codeInsight.declarativeInlayProvider language="kotlin" isEnabledByDefault="true" group="OTHER_GROUP"
                                               providerId="tendril.transactional" bundle="messages.TendrilBundle" nameKey="hints.transactional.name"
                                               implementationClass="dev.tendril.hints.TransactionalHints"/>
+
+        <!-- Spring Data JPA: entities, attributes and parameters inside @Query -->
+        <psi.referenceContributor language="UAST" implementation="dev.tendril.jpa.QueryReferenceContributor"/>
+        <referencesSearch implementation="dev.tendril.jpa.QueryReferenceSearcher"/>
+        <completion.contributor language="JAVA" implementationClass="dev.tendril.jpa.QueryCompletionContributor"/>
+        <completion.contributor language="kotlin" implementationClass="dev.tendril.jpa.QueryCompletionContributor"/>
+        <localInspection language="UAST" groupName="Tendril" enabledByDefault="true" level="WARNING"
+                         shortName="TendrilJpqlQuery" displayName="Unknown entity or attribute in @Query"
+                         implementationClass="dev.tendril.jpa.JpqlQueryInspection"/>
+        <localInspection language="UAST" groupName="Tendril" enabledByDefault="true" level="WARNING"
+                         shortName="TendrilQueryParameters" displayName="@Query parameter that is not bound or not used"
+                         implementationClass="dev.tendril.jpa.QueryParameterInspection"/>
 
         <localInspection language="UAST" groupName="Tendril" enabledByDefault="true" level="WARNING"
                          shortName="TendrilTransactionalPitfalls" displayName="@Transactional that Spring will not apply"

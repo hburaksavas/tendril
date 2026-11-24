@@ -64,5 +64,41 @@ Target: IntelliJ IDEA 2025.3+ (unified distribution). Stack: Kotlin, IntelliJ Pl
 - [x] Settings page for the ignore list (see Phase 6)
 - [x] CI build (build, release, verify workflows), Marketplace-ready metadata
 
+## Phase 8 — Recordings, deeper
+- [ ] N+1 warning: a statement template run many times in one request gets a badge in the SQL tab, with a link to the repository method that issued it
+- [ ] Compare two recordings of the same endpoint side by side: response body, duration, SQL counts, Feign calls (before/after a change)
+- [ ] Generate a `MockMvc` / `WebTestClient` test from a recording (Feign calls as mocks, recorded response as assertions)
+- [ ] Export and import recordings (`.http` or HAR) to share them and replay them elsewhere
+- (Feign recordings served as stubs: see Phase 7)
+
+## Phase 9 — Configuration, deeper
+- [ ] Config Explorer window: the effective value of every key for a profile and the file it comes from (`application.yml`, `application-dev.yml`, a profile-group member)
+- [ ] Inspection: a key in a config file that no code reads and no metadata knows (the reverse of the unknown-key warning)
+- [ ] `@Value` inlay hint mentions the environment variable that would override the key (`SERVER_PORT`)
+- [ ] Deprecated keys from the metadata `deprecation` entries, with a quick fix to the replacement key (Boot 2 → 3 migration)
+
+## Phase 10 — Beans and code analysis
+- [ ] Dependency graph from a controller through services and repositories to Feign clients (replaces the switched-off Spring Beans window; joins the service-method tree of Phase 7)
+- [ ] Self-invocation inspection for `@Async` and `@Cacheable` (as for `@Transactional`)
+- [ ] Inspections: `@Scheduled` without `@EnableScheduling`, `@ConfigurationProperties` class that is neither enabled nor scanned
+- (Kotlin quick fixes: see Kotlin support)
+
+## Phase 11 — Messaging and contracts
+- [ ] Messaging window: `@KafkaListener` / `@RabbitListener` (incoming) and `KafkaTemplate` / `RabbitTemplate` sends (outgoing), topic and queue names resolved from config
+- [ ] OpenAPI: generate `openapi.yaml` from the endpoints, or report differences between an existing spec and the code
+- [ ] Actuator: metrics and `httpexchanges` tab with simple charts
+
+## Phase 12 — Spring Data JPA
+- [x] Entity model: `@Entity` / `@Embeddable` / `@MappedSuperclass` (jakarta and javax), inherited attributes, field or property access, `@Transient`, collection element types, repository domain type (Java and Kotlin)
+- [x] `@Query` (JPQL): unknown entity and attribute inspection, also through joins, embeddables and `#{#entityName}`; Hibernate's `id`, `size`, implicit subtype attributes are accepted
+- [x] `@Query`: completion of entity names, attributes after `alias.`, aliases and `:parameter` names
+- [x] `@Query`: Ctrl+Click to the entity, attribute and method parameter; rename of an entity, attribute or parameter updates the query
+- [x] Parameter binding (JPQL and native): `:name` / `?n` with no method parameter, unused method parameters, named and positional mixed; `Pageable`, `Sort` and SpEL are understood
+- [ ] Derived query methods (`findByEmailAndStatus`): attribute completion and validation, generated JPQL as an inlay
+- [ ] Return type against the `SELECT` clause; `@Modifying` missing on `UPDATE` / `DELETE`; plural attribute dereferenced without a join
+- [ ] `@NamedQuery` and `orm.xml`; constructor expressions (`new com.x.Dto(...)`) resolved to the class and constructor
+- [ ] Native SQL against `@Table` / `@Column` and Flyway / Liquibase migrations
+- [ ] Recordings: from a SQL template to the repository method that ran it; N+1 → `JOIN FETCH` / `@EntityGraph` quick fix
+
 ## Last
 - [ ] Spring Initializr project wizard (feasible; deliberately postponed, skipped for now)
