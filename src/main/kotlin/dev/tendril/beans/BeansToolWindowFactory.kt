@@ -12,7 +12,6 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
-import com.intellij.pom.Navigatable
 import com.intellij.psi.PsiElement
 import com.intellij.psi.SmartPointerManager
 import com.intellij.psi.SmartPsiElementPointer
@@ -201,7 +200,7 @@ internal class BeansPanel(private val project: Project) : JPanel(BorderLayout())
     }
 
     private fun navigate() {
-        val element = list.selectedValue?.pointer?.element ?: return
-        (element as? Navigatable)?.takeIf { it.canNavigate() }?.navigate(true)
+        val pointer = list.selectedValue?.pointer ?: return
+        dev.tendril.readInBackground(project, this, { dev.tendril.descriptorOf(pointer.element) }) { it?.navigate(true) }
     }
 }

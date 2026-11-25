@@ -8,7 +8,6 @@ import com.intellij.psi.util.CachedValueProvider
 import com.intellij.psi.util.CachedValuesManager
 import com.intellij.psi.util.InheritanceUtil
 import com.intellij.psi.util.PropertyUtilBase
-import com.intellij.psi.util.PsiModificationTracker
 import com.intellij.psi.util.PsiUtil
 import dev.tendril.beans.SpringNames
 import java.beans.Introspector
@@ -97,10 +96,10 @@ internal class EntityModel(private val types: Map<String, ManagedType>) {
 }
 
 internal object EntityModels {
-    /** Cached per project; rebuilt on any PSI change (entities may be Java or Kotlin). Call inside a read action. */
+    /** Cached per project; rebuilt when declarations in Java or Kotlin code change. Call inside a read action. */
     fun get(project: Project): EntityModel =
         CachedValuesManager.getManager(project).getCachedValue(project) {
-            CachedValueProvider.Result.create(build(project), PsiModificationTracker.getInstance(project))
+            CachedValueProvider.Result.create(build(project), dev.tendril.CodeStructureTracker.getInstance(project))
         }
 
     private fun build(project: Project): EntityModel {

@@ -1,13 +1,11 @@
 package dev.tendril.endpoints
 
-import com.intellij.lang.java.JavaLanguage
 import com.intellij.openapi.project.Project
 import com.intellij.psi.*
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.search.searches.AnnotatedElementsSearch
 import com.intellij.psi.util.CachedValueProvider
 import com.intellij.psi.util.CachedValuesManager
-import com.intellij.psi.util.PsiModificationTracker
 
 data class Endpoint(
     val httpMethod: String,
@@ -32,12 +30,12 @@ object EndpointScanner {
         PKG + "PatchMapping" to "PATCH",
     )
 
-    /** Cached per project, rebuilt when Java code changes. Must be called inside a read action. */
+    /** Cached per project, rebuilt when declarations in Java or Kotlin code change. Must be called inside a read action. */
     fun cached(project: Project): List<Endpoint> =
         CachedValuesManager.getManager(project).getCachedValue(project) {
             CachedValueProvider.Result.create(
                 scan(project),
-                PsiModificationTracker.getInstance(project).forLanguage(JavaLanguage.INSTANCE),
+                dev.tendril.CodeStructureTracker.getInstance(project),
             )
         }
 

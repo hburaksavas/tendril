@@ -1,13 +1,11 @@
 package dev.tendril.feign
 
-import com.intellij.lang.java.JavaLanguage
 import com.intellij.openapi.project.Project
 import com.intellij.psi.*
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.search.searches.AnnotatedElementsSearch
 import com.intellij.psi.util.CachedValueProvider
 import com.intellij.psi.util.CachedValuesManager
-import com.intellij.psi.util.PsiModificationTracker
 import dev.tendril.endpoints.EndpointScanner
 
 /** One outgoing call: a mapped method of a Feign client interface. [subPath] is relative to the client's `path`. */
@@ -34,12 +32,12 @@ object FeignScanner {
         "org.springframework.cloud.netflix.feign.FeignClient",
     )
 
-    /** Cached per project, rebuilt when Java code changes. Must be called inside a read action. */
+    /** Cached per project, rebuilt when declarations in Java or Kotlin code change. Must be called inside a read action. */
     fun cached(project: Project): List<FeignClientDef> =
         CachedValuesManager.getManager(project).getCachedValue(project) {
             CachedValueProvider.Result.create(
                 scan(project),
-                PsiModificationTracker.getInstance(project).forLanguage(JavaLanguage.INSTANCE),
+                dev.tendril.CodeStructureTracker.getInstance(project),
             )
         }
 
@@ -52,6 +50,9 @@ object FeignScanner {
             .mapNotNull { defOf(it) }
             .sortedBy { it.className }
     }
+
+    /** True when [cls] carries `@FeignClient`. Cheap; needs a read action. */
+    fun isClient(cls: PsiClass): Boolean = ANNOTATIONS.any { cls.hasAnnotation(it) }
 
     /** The client definition of [cls], or null when it is not a Feign client. Needs a read action. */
     fun defOf(cls: PsiClass): FeignClientDef? {

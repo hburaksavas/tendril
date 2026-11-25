@@ -12,7 +12,6 @@ import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.project.DumbService
 import com.intellij.openapi.project.Project
-import com.intellij.pom.Navigatable
 import com.intellij.ui.ColoredListCellRenderer
 import com.intellij.ui.SimpleTextAttributes
 import com.intellij.util.Processor
@@ -41,9 +40,11 @@ private class EndpointSearchContributor(private val project: Project) :
         progressIndicator: ProgressIndicator,
         consumer: Processor<in FoundItemDescriptor<Endpoint>>,
     ) {
-        val endpoints = ReadAction.compute<List<Endpoint>, RuntimeException> {
-            if (DumbService.isDumb(project)) emptyList() else EndpointScanner.cached(project)
-        }
+        if (DumbService.isDumb(project)) return
+        // non-blocking: a first scan can take a while and must not hold off typing (write actions) meanwhile
+        val endpoints = ReadAction.nonBlocking<List<Endpoint>> { EndpointScanner.cached(project) }
+            .wrapProgress(progressIndicator)
+            .executeSynchronously()
         val tokens = pattern.lowercase().split(' ', '\t').filter { it.isNotEmpty() }
         for (e in endpoints) {
             progressIndicator.checkCanceled()
@@ -71,8 +72,9 @@ private class EndpointSearchContributor(private val project: Project) :
     override fun getDataForItem(element: Endpoint, dataId: String): Any? = null
 
     override fun processSelectedItem(selected: Endpoint, modifiers: Int, searchText: String): Boolean {
-        val method = ReadAction.compute<Navigatable?, RuntimeException> { selected.method.element as? Navigatable }
-        method?.takeIf { it.canNavigate() }?.navigate(true)
+        dev.tendril.readInBackground(project, project, { dev.tendril.descriptorOf(selected.method.element) }) {
+            it?.navigate(true)
+        }
         return true
     }
 }

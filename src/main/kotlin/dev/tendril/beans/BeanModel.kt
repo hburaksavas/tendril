@@ -2,7 +2,6 @@ package dev.tendril.beans
 
 import com.intellij.codeInsight.AnnotationUtil
 import dev.tendril.config.firstNonBlank
-import com.intellij.lang.java.JavaLanguage
 import com.intellij.openapi.project.Project
 import com.intellij.psi.*
 import com.intellij.psi.search.GlobalSearchScope
@@ -10,7 +9,6 @@ import com.intellij.psi.search.searches.AnnotatedElementsSearch
 import com.intellij.psi.search.searches.ClassInheritorsSearch
 import com.intellij.psi.util.CachedValueProvider
 import com.intellij.psi.util.CachedValuesManager
-import com.intellij.psi.util.PsiModificationTracker
 
 object SpringNames {
     const val COMPONENT = "org.springframework.stereotype.Component"
@@ -127,12 +125,12 @@ class BeanModel(val beans: List<BeanDef>, val points: List<InjectionPoint>) {
 }
 
 object BeanModels {
-    /** Cached per project; rebuilt when Java code changes. Call inside a read action. */
+    /** Cached per project; rebuilt when declarations in Java or Kotlin code change. Call inside a read action. */
     fun get(project: Project): BeanModel =
         CachedValuesManager.getManager(project).getCachedValue(project) {
             CachedValueProvider.Result.create(
                 BeanModelBuilder.build(project),
-                PsiModificationTracker.getInstance(project).forLanguage(JavaLanguage.INSTANCE),
+                dev.tendril.CodeStructureTracker.getInstance(project),
             )
         }
 }

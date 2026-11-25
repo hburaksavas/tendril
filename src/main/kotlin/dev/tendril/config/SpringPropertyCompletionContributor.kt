@@ -70,4 +70,16 @@ object SpringFiles {
     private val CONFIG = Regex("(application|bootstrap).*\\.(properties|ya?ml)")
 
     fun isAppConfig(fileName: String) = CONFIG.matches(fileName)
+
+    /**
+     * The application*.yml / .properties files in the project's own content, found by file type rather than by going
+     * through every file name the IDE has indexed (all open projects, libraries and the JDK). Needs a read action.
+     */
+    fun appConfigFiles(project: com.intellij.openapi.project.Project): List<com.intellij.openapi.vfs.VirtualFile> {
+        val scope = com.intellij.psi.search.GlobalSearchScope.projectScope(project)
+        return listOf(org.jetbrains.yaml.YAMLFileType.YML, com.intellij.lang.properties.PropertiesFileType.INSTANCE)
+            .flatMap { com.intellij.psi.search.FileTypeIndex.getFiles(it, scope) }
+            .filter { isAppConfig(it.name) }
+            .distinct()
+    }
 }

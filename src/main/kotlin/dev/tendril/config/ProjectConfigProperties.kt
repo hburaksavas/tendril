@@ -143,5 +143,7 @@ object ProjectConfigProperties {
         return ProjectFileIndex.getInstance(cls.project).isInSourceContent(file)
     }
 
-    private fun kebab(camel: String) = camel.replace(Regex("([a-z0-9])([A-Z])"), "$1-$2").lowercase()
+    private val CAMEL_HUMP = Regex("([a-z0-9])([A-Z])")
+
+    private fun kebab(camel: String) = camel.replace(CAMEL_HUMP, "$1-$2").lowercase()
 }

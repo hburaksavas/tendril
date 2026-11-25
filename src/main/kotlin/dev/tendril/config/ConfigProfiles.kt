@@ -2,8 +2,6 @@ package dev.tendril.config
 
 import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiElement
-import com.intellij.psi.search.FilenameIndex
-import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.openapi.roots.ProjectRootModificationTracker
 import com.intellij.psi.util.CachedValueProvider
 import com.intellij.psi.util.CachedValuesManager
@@ -35,6 +33,13 @@ object ConfigProfiles {
         PROFILE_FILE.matchEntire(fileName)?.let { return it.groupValues[1] }
 
         val document = PsiTreeUtil.getParentOfType(element, YAMLDocument::class.java, false) ?: return null
+        // Asked for every config entry a lookup looks at: walk each document once per change of its file, not per call.
+        return CachedValuesManager.getCachedValue(document) {
+            CachedValueProvider.Result.create(documentProfile(document), document.containingFile)
+        }
+    }
+
+    private fun documentProfile(document: YAMLDocument): String? {
         for (kv in PsiTreeUtil.findChildrenOfType(document, YAMLKeyValue::class.java)) {
             // `spring.profiles` is also the parent of spring.profiles.active / .group: only its scalar form names a profile
             if (kv.value is YAMLScalar && MetadataIndex.normalize(ConfigNavigation.yamlPath(kv)) in DOCUMENT_PROFILE_KEYS) {
@@ -56,8 +61,10 @@ object ConfigProfiles {
     }
 
     /** `${SPRING_PROFILES_ACTIVE:dev}` -> `dev`. */
+    private val DEFAULTED_PLACEHOLDER = Regex("""\$\{[^:}]+:([^}]*)}""")
+
     private fun unwrapDefault(value: String): String =
-        Regex("""\$\{[^:}]+:([^}]*)}""").matchEntire(value)?.groupValues?.get(1)?.trim() ?: value
+        DEFAULTED_PLACEHOLDER.matchEntire(value)?.groupValues?.get(1)?.trim() ?: value
 
     /**
      * Members of the profile group [profile] (`spring.profiles.group.<profile>`), in declaration order. With [from], only
@@ -96,25 +103,24 @@ object ConfigProfiles {
     }
 
     /**
-     * Profile names known from application-<profile> file names and `on-profile` sections, sorted. Cached until a file
-     * or the project structure changes. Needs a read action.
+     * Profile names known from application-<profile> file names and `on-profile` sections, sorted. Cached until a
+     * config file or the project structure changes (code edits leave it alone). Needs a read action.
      */
     fun knownProfiles(project: Project): Set<String> =
         CachedValuesManager.getManager(project).getCachedValue(project) {
+            val tracker = PsiModificationTracker.getInstance(project)
             CachedValueProvider.Result.create(
                 scanProfiles(project),
-                PsiModificationTracker.getInstance(project),
+                tracker.forLanguage(org.jetbrains.yaml.YAMLLanguage.INSTANCE),
+                tracker.forLanguage(com.intellij.lang.properties.PropertiesLanguage.INSTANCE),
                 ProjectRootModificationTracker.getInstance(project),
             )
         }
 
     private fun scanProfiles(project: Project): Set<String> {
         val result = sortedSetOf<String>()
-        // The file name index is shared by every open project: keep only names that have a file in this one.
-        val scope = GlobalSearchScope.projectScope(project)
-        for (name in FilenameIndex.getAllFilenames(project)) {
-            val match = PROFILE_FILE.matchEntire(name) ?: continue
-            if (FilenameIndex.getVirtualFilesByName(name, scope).isNotEmpty()) result += match.groupValues[1]
+        for (file in SpringFiles.appConfigFiles(project)) {
+            PROFILE_FILE.matchEntire(file.name)?.let { result += it.groupValues[1] }
         }
         for (key in DOCUMENT_PROFILE_KEYS) {
             for (e in ConfigNavigation.allConfigElements(project, key)) {

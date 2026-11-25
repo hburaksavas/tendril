@@ -4,6 +4,16 @@ All notable changes to Tendril. The section of the version being built becomes t
 
 ## [Unreleased]
 
+### Performance
+- Typing no longer rebuilds the project-wide models (beans, config keys and the code that reads them, endpoints, Feign clients, JPA entities): they are rebuilt only when declarations change (classes, members, annotations, signatures), not on edits inside method, constructor or initializer bodies. The JPA model was rebuilt on any edit in any file, config files included
+- Config files and profiles are found by file type instead of by going through every file name the IDE has indexed (all open projects, libraries and the JDK); the profile list is no longer rebuilt on code edits
+- The profile a YAML document belongs to is computed once per change of its file, not on every value lookup (used by inlay hints, Feign addresses and navigation)
+- The Feign gutter icon checks annotations only instead of building the whole client for every method of every interface, repositories included; clicking it resolves the address off the UI thread
+- Search Everywhere's Endpoints tab no longer holds a blocking read action, and navigation from it and from the Beans window happens off the UI thread
+
+### Fixes
+- Bean, config, endpoint and Feign models now also follow changes in Kotlin code (they only followed Java edits) and library changes
+
 ## [0.7.1]
 
 ### Fixes

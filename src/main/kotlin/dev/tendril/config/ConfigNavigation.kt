@@ -9,8 +9,6 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ModuleRootManager
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiManager
-import com.intellij.psi.search.FilenameIndex
-import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.openapi.roots.ProjectRootModificationTracker
 import com.intellij.psi.util.CachedValueProvider
 import com.intellij.psi.util.CachedValuesManager
@@ -119,15 +117,10 @@ object ConfigNavigation {
         }
 
     private fun buildKeyIndex(project: Project): Map<String, List<PsiElement>> {
-        val scope = GlobalSearchScope.projectScope(project)
         val psiManager = PsiManager.getInstance(project)
         val index = LinkedHashMap<String, MutableList<PsiElement>>()
 
-        val files = FilenameIndex.getAllFilenames(project)
-            .filter { SpringFiles.isAppConfig(it) }
-            .flatMap { FilenameIndex.getVirtualFilesByName(it, scope) }
-            .distinct()
-        for (vf in files) {
+        for (vf in SpringFiles.appConfigFiles(project)) {
             when (val psi = psiManager.findFile(vf)) {
                 is YAMLFile -> PsiTreeUtil.findChildrenOfType(psi, YAMLKeyValue::class.java).forEach {
                     index.getOrPut(MetadataIndex.normalize(yamlPath(it))) { mutableListOf() }.add(it)

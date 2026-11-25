@@ -1,7 +1,6 @@
 package dev.tendril.config
 
 import com.google.gson.JsonParser
-import com.intellij.lang.java.JavaLanguage
 import com.intellij.openapi.module.Module
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.OrderEnumerator
@@ -10,7 +9,6 @@ import com.intellij.psi.JavaPsiFacade
 import com.intellij.psi.PsiEnumConstant
 import com.intellij.psi.util.CachedValueProvider
 import com.intellij.psi.util.CachedValuesManager
-import com.intellij.psi.util.PsiModificationTracker
 import java.util.TreeSet
 
 data class SpringProperty(
@@ -60,16 +58,20 @@ class MetadataIndex(
             "java.nio.charset.Charset", "java.util.Locale", "java.net.InetAddress", "java.io.File",
         )
 
-        /** Spring relaxed binding: ignore case, '-' and '_', and list indexes. */
-        fun normalize(key: String): String =
-            key.replace(Regex("\\[[^\\]]*]"), "").replace("-", "").replace("_", "").lowercase()
+        private val LIST_INDEX = Regex("\\[[^\\]]*]")
+
+        /** Spring relaxed binding: ignore case, '-' and '_', and list indexes. Called very often: no regex unless needed. */
+        fun normalize(key: String): String {
+            val noIndex = if ('[' in key) key.replace(LIST_INDEX, "") else key
+            return noIndex.replace("-", "").replace("_", "").lowercase()
+        }
     }
 }
 
 object ConfigMetadata {
     private const val PATH = "META-INF/spring-configuration-metadata.json"
 
-    /** Library metadata plus properties the project defines itself; re-merged when roots or Java code change. */
+    /** Library metadata plus properties the project defines itself; re-merged when roots or code declarations change. */
     fun index(module: Module): MetadataIndex {
         val project = module.project
         return CachedValuesManager.getManager(project).getCachedValue(module) {
@@ -79,7 +81,8 @@ object ConfigMetadata {
             CachedValueProvider.Result.create(
                 MetadataIndex(merged, library.hints, library.properties.isNotEmpty()),
                 ProjectRootModificationTracker.getInstance(project),
-                PsiModificationTracker.getInstance(project).forLanguage(JavaLanguage.INSTANCE),
+                dev.tendril.CodeStructureTracker.getInstance(project),
+                TendrilSettings.getInstance(project).tracker,
             )
         }
     }
@@ -100,7 +103,7 @@ object ConfigMetadata {
         CachedValuesManager.getManager(project).getCachedValue(project) {
             CachedValueProvider.Result.create(
                 ProjectConfigProperties.scan(project),
-                PsiModificationTracker.getInstance(project).forLanguage(JavaLanguage.INSTANCE),
+                dev.tendril.CodeStructureTracker.getInstance(project),
                 TendrilSettings.getInstance(project).tracker,
             )
         }

@@ -5,12 +5,10 @@ import com.intellij.codeInsight.daemon.RelatedItemLineMarkerInfo
 import com.intellij.codeInsight.daemon.RelatedItemLineMarkerProvider
 import com.intellij.codeInsight.navigation.NavigationGutterIconBuilder
 import com.intellij.icons.AllIcons
-import com.intellij.lang.java.JavaLanguage
 import dev.tendril.javaViewOf
 import com.intellij.psi.*
 import com.intellij.psi.util.CachedValueProvider
 import com.intellij.psi.util.CachedValuesManager
-import com.intellij.psi.util.PsiModificationTracker
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.search.searches.AnnotatedElementsSearch
 import com.intellij.psi.search.searches.ClassInheritorsSearch
@@ -40,7 +38,7 @@ class BeanLineMarkerProvider : RelatedItemLineMarkerProvider() {
         val beans = CachedValuesManager.getCachedValue(cls) {
             CachedValueProvider.Result.create(
                 findBeans(cls),
-                PsiModificationTracker.getInstance(cls.project).forLanguage(JavaLanguage.INSTANCE),
+                dev.tendril.CodeStructureTracker.getInstance(cls.project),
             )
         }
         if (beans.isEmpty()) return
