@@ -4,6 +4,8 @@ All notable changes to Tendril. The section of the version being built becomes t
 
 ## [Unreleased]
 
+## [0.7.2]
+
 ### Performance
 - Typing no longer rebuilds the project-wide models (beans, config keys and the code that reads them, endpoints, Feign clients, JPA entities): they are rebuilt only when declarations change (classes, members, annotations, signatures), not on edits inside method, constructor or initializer bodies. The JPA model was rebuilt on any edit in any file, config files included
 - Config files and profiles are found by file type instead of by going through every file name the IDE has indexed (all open projects, libraries and the JDK); the profile list is no longer rebuilt on code edits
