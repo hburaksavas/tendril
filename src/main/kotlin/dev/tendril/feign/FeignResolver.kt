@@ -98,6 +98,16 @@ object FeignResolver {
         }
     }
 
+    /**
+     * The value of [key] for the application [from] belongs to, in its default config (with `spring.profiles.active`),
+     * else from the first profile file that defines it; a `${VAR:default}` value gives its default. Needs a read action.
+     */
+    fun appValue(project: Project, key: String, from: PsiElement?): String? {
+        val elements = ConfigNavigation.scopeOf(from)(ConfigNavigation.allConfigElements(project, key))
+        val value = valueFor(elements, ConfigProfiles.effectiveProfiles(project, null, from)) ?: return null
+        return PLACEHOLDER.matchEntire(value.trim())?.let { it.groups[2]?.value } ?: value
+    }
+
     /** Config lookups for one client: the profiles in effect and the modules whose config applies. */
     private class Lookup(val project: Project, from: PsiElement?, val profiles: List<String>) {
         private val scope = ConfigNavigation.scopeOf(from)

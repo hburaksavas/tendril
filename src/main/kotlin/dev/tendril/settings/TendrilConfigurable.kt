@@ -15,6 +15,8 @@ import com.intellij.ui.table.TableView
 import com.intellij.util.ui.ColumnInfo
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.ListTableModel
+import com.intellij.ide.RecentProjectsManagerBase
+import dev.tendril.calls.ServiceMapStore
 import dev.tendril.config.TendrilSettings
 import dev.tendril.feign.FeignResolver
 import dev.tendril.recordings.RecorderServer
@@ -36,6 +38,7 @@ class TendrilConfigurable(private val project: Project) : SearchableConfigurable
     // Working copies: nothing reaches the settings until Apply.
     internal val ignoredKeys = CollectionListModel<String>()
     internal val templates = CollectionListModel<String>()
+    internal val linkedProjects = CollectionListModel<String>()
     internal val addresses = ListTableModel<AddressRow>(
         object : ColumnInfo<AddressRow, String>("Service name") {
             override fun valueOf(item: AddressRow) = item.service
@@ -89,6 +92,18 @@ class TendrilConfigurable(private val project: Project) : SearchableConfigurable
                     comment("Built in: " + FeignResolver.NAME_KEYS.joinToString("  ") { "<code>$it</code>" })
                 }
             }
+            group("Service calls") {
+                row {
+                    comment(
+                        "Other projects of the system (backend, BFF, React frontend) that this one is linked to. Controller " +
+                            "and Feign methods get a gutter icon showing who calls them across these projects (fetch calls, " +
+                            "Feign calls and the endpoints that make them) and what they call. A project open in another " +
+                            "window is read live; a closed one from what Tendril saved the last time it was open; " +
+                            "a frontend from its files.",
+                    )
+                }
+                row { cell(linkedProjectsPanel()).align(Align.FILL) }
+            }
             group("Recorder") {
                 row("Port:") {
                     cell(port)
@@ -114,6 +129,44 @@ class TendrilConfigurable(private val project: Project) : SearchableConfigurable
             }
             .createPanel().apply { preferredSize = Dimension(JBUI.scale(520), JBUI.scale(90)) }
     }
+
+    private fun linkedProjectsPanel(): JComponent {
+        val list = JBList(linkedProjects).apply {
+            selectionMode = ListSelectionModel.SINGLE_SELECTION
+            cellRenderer = com.intellij.ui.SimpleListCellRenderer.create("") { path ->
+                "${projectName(path)}   $path"
+            }
+        }
+        return ToolbarDecorator.createDecorator(list)
+            .setAddAction { button -> chooseProject(button) }
+            .createPanel().apply { preferredSize = Dimension(JBUI.scale(520), JBUI.scale(90)) }
+    }
+
+    /** Recently opened projects that are not linked yet, then a folder chooser for a project never opened here. */
+    private fun chooseProject(button: com.intellij.ui.AnActionButton) {
+        val own = project.basePath?.let(ServiceMapStore::normalise)
+        val linked = linkedProjects.items.map(ServiceMapStore::normalise).toSet()
+        val recent = RecentProjectsManagerBase.getInstanceEx().getRecentPaths()
+            .filter { ServiceMapStore.normalise(it) != own && ServiceMapStore.normalise(it) !in linked }
+        val folder = "Choose Folder…"
+        com.intellij.openapi.ui.popup.JBPopupFactory.getInstance()
+            .createPopupChooserBuilder(recent + folder)
+            .setTitle("Link Project")
+            .setRenderer(com.intellij.ui.SimpleListCellRenderer.create("") { path ->
+                if (path == folder) folder else "${projectName(path)}   $path"
+            })
+            .setItemChosenCallback { chosen ->
+                if (chosen == folder) {
+                    val descriptor = com.intellij.openapi.fileChooser.FileChooserDescriptorFactory.createSingleFolderDescriptor()
+                    com.intellij.openapi.fileChooser.FileChooser.chooseFile(descriptor, project, null)?.let { linkedProjects.add(it.path) }
+                } else linkedProjects.add(chosen)
+            }
+            .createPopup()
+            .show(button.preferredPopupPoint)
+    }
+
+    private fun projectName(path: String): String =
+        RecentProjectsManagerBase.getInstanceEx().getProjectName(path).ifBlank { path.trimEnd('/').substringAfterLast('/') }
 
     private fun templatePanel(): JComponent {
         val list = JBList(templates).apply { selectionMode = ListSelectionModel.SINGLE_SELECTION }
@@ -154,6 +207,7 @@ class TendrilConfigurable(private val project: Project) : SearchableConfigurable
         val s = settings.state
         return ignoredKeys.items != s.ignoredKeys ||
             templates.items != s.nameKeyTemplates ||
+            linkedProjects.items != s.linkedProjects ||
             addressMap() != s.serviceUrls ||
             port.number != recorder.port ||
             token != recorder.token
@@ -163,6 +217,7 @@ class TendrilConfigurable(private val project: Project) : SearchableConfigurable
         val s = settings.state
         s.ignoredKeys = ignoredKeys.items.toMutableList()
         s.nameKeyTemplates = templates.items.toMutableList()
+        s.linkedProjects = linkedProjects.items.toMutableList()
         s.serviceUrls = addressMap().toMutableMap()
         settings.changed()
         recorder.port = port.number
@@ -175,6 +230,7 @@ class TendrilConfigurable(private val project: Project) : SearchableConfigurable
         val s = settings.state
         ignoredKeys.replaceAll(s.ignoredKeys.toList())
         templates.replaceAll(s.nameKeyTemplates.toList())
+        linkedProjects.replaceAll(s.linkedProjects.toList())
         addresses.items = s.serviceUrls.entries.sortedBy { it.key }.map { AddressRow(it.key, it.value) }.toMutableList()
         port.number = recorder.port
         token = recorder.token

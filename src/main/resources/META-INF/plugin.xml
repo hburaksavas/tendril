@@ -152,6 +152,9 @@
                          shortName="TendrilQueryParameters" displayName="@Query parameter that is not bound or not used"
                          implementationClass="dev.tendril.jpa.QueryParameterInspection"/>
 
+        <!-- service calls across linked projects: React fetch -> BFF endpoint -> Feign -> backend endpoint -->
+        <postStartupActivity implementation="dev.tendril.calls.ServiceMapStartup"/>
+
         <localInspection language="UAST" groupName="Tendril" enabledByDefault="true" level="WARNING"
                          shortName="TendrilTransactionalPitfalls" displayName="@Transactional that Spring will not apply"
                          implementationClass="dev.tendril.transactions.TransactionalPitfallsInspection"/>
@@ -162,6 +165,10 @@
                 text="Send HTTP Request" description="Send the request under the caret in a .http file">
             <keyboard-shortcut keymap="$default" first-keystroke="ctrl ENTER"/>
             <add-to-group group-id="EditorPopupMenu" anchor="first"/>
+        </action>
+        <action id="Tendril.FindServiceCalls" class="dev.tendril.calls.FindServiceCallsAction"
+                text="Find Service Calls" description="Who calls this endpoint or Feign method across the linked projects, and what it calls">
+            <add-to-group group-id="EditorPopupMenu" anchor="after" relative-to-action="Tendril.SendHttpRequest"/>
         </action>
     </actions>
 </idea-plugin>

@@ -4,6 +4,14 @@ All notable changes to Tendril. The section of the version being built becomes t
 
 ## [Unreleased]
 
+### Service calls across projects
+- Link the other projects of a system (backend, BFF, React frontend) under Settings | Tools | Tendril, picked from the recently opened projects or as a folder
+- Right-click | Find Service Calls inside a controller handler or a Feign method shows the chain across them: which `fetch` calls of the frontend, which Feign calls of the BFF and the endpoints that make them call it, and what it calls in turn; double-click opens the code, in the window of its project when that is open
+- A BFF endpoint knows the Feign calls it makes through the services, interfaces and private methods it calls (Java and Kotlin)
+- Feign calls find their service by address (local port, or a host named like `spring.application.name`) or by client name, then the endpoint by method and path including the context path; a call no linked application serves is matched by path only, and says so
+- `fetch` calls are read from the frontend's files, with base addresses from `.env` (`REACT_APP_*`, `VITE_*`) or a constant of the file, and the method from the options
+- A linked project open in another window is read live; a closed one from what Tendril saved in the background the last time it was open (`~/.tendril/service-map`)
+
 ## [0.7.2]
 
 ### Performance

@@ -105,6 +105,13 @@ Target: IntelliJ IDEA 2025.3+ (unified distribution). Stack: Kotlin, IntelliJ Pl
 - [ ] Sample JSON body in generated `.http` requests, built from the request DTO (`@JsonProperty`, `@JsonIgnore` respected)
 - [ ] Error mapping per endpoint: which exception becomes which status, from `@ControllerAdvice` / `@ExceptionHandler`
 
+## Phase 11b — Service calls across projects
+- [x] Linked projects (recent projects or a folder); snapshots of closed projects saved in the background
+- [x] Find Service Calls (editor context menu) call chain: React `fetch` → BFF endpoint → Feign → backend endpoint, both directions
+- [ ] `WebClient` / `RestClient` / `RestTemplate` calls and `axios` / wrapper functions of the frontend (configurable names)
+- [ ] Dev proxy of the frontend (`package.json` `proxy`, Vite `server.proxy`) to tell which application a relative `fetch` goes to
+- [ ] A Service Map window listing the whole graph, with the calls that match nothing
+
 ## Phase 12 — Spring Data JPA
 - [x] Entity model: `@Entity` / `@Embeddable` / `@MappedSuperclass` (jakarta and javax), inherited attributes, field or property access, `@Transient`, collection element types, repository domain type (Java and Kotlin)
 - [x] `@Query` (JPQL): unknown entity and attribute inspection, also through joins, embeddables and `#{#entityName}`; Hibernate's `id`, `size`, implicit subtype attributes are accepted

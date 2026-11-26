@@ -9,6 +9,7 @@ import com.intellij.openapi.util.SimpleModificationTracker
  *  - keys the "unknown property" inspection must skip (custom properties)
  *  - base URLs of Feign services that only declare a name
  *  - extra config keys, tried before the built-in ones, that hold the address of a name-only Feign client
+ *  - the projects whose endpoints, Feign clients and fetch calls take part in the service calls of this one
  */
 @Service(Service.Level.PROJECT)
 @State(name = "TendrilSettings", storages = [Storage("tendril.xml")])
@@ -22,6 +23,9 @@ class TendrilSettings : PersistentStateComponent<TendrilSettings.State> {
 
         /** Config keys with a `{name}` placeholder for the service name, tried before the built-in ones. */
         var nameKeyTemplates: MutableList<String> = mutableListOf()
+
+        /** Root folders of other projects (backend, BFF, frontend) linked to this one for the service calls. */
+        var linkedProjects: MutableList<String> = mutableListOf()
     }
 
     private var state = State()
