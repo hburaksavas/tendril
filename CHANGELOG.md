@@ -4,6 +4,8 @@ All notable changes to Tendril. The section of the version being built becomes t
 
 ## [Unreleased]
 
+## [0.8.0]
+
 ### Service calls across projects
 - Link the other projects of a system (backend, BFF, React frontend) under Settings | Tools | Tendril, picked from the recently opened projects or as a folder
 - Right-click | Find Service Calls inside a controller handler or a Feign method shows the chain across them: which `fetch` calls of the frontend, which Feign calls of the BFF and the endpoints that make them call it, and what it calls in turn; double-click opens the code, in the window of its project when that is open
