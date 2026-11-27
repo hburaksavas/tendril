@@ -62,7 +62,47 @@ class EndpointRequestsTest : SpringTestCase() {
         assertTrue(http, http.contains("\"paid\": false"))
         assertTrue(http, http.contains("\"kind\": \"CARD\""))
         assertTrue(http, http.contains("\"city\": \"string\""))
-        assertTrue(http, http.contains("\"tags\": []"))
+        assertTrue(http, http.contains("\"tags\": [\n    \"string\"\n  ]"))
+    }
+
+    fun `test the body follows Jackson names, records, generics and nested lists`() {
+        myFixture.addClass("package com.fasterxml.jackson.annotation; public @interface JsonProperty { String value() default \"\"; }")
+        myFixture.addClass("package com.fasterxml.jackson.annotation; public @interface JsonIgnore { }")
+        myFixture.addClass("package app; public record Line(String sku, int quantity) { }")
+        myFixture.addClass("package app; public class Batch<T> { public java.util.List<T> items; }")
+        myFixture.addClass(
+            """
+            package app;
+            import com.fasterxml.jackson.annotation.*;
+            public class Cart {
+                @JsonProperty("customer_id") private String customerId;
+                @JsonIgnore private String internal;
+                private transient int cache;
+                private java.time.LocalDate deliverOn;
+                private Batch<Line> lines;
+            }
+            """.trimIndent(),
+        )
+        myFixture.addClass(
+            """
+            package app;
+            import org.springframework.web.bind.annotation.*;
+            @RestController
+            public class CartController {
+                @PutMapping("/carts") public void save(@RequestBody Cart cart) { }
+            }
+            """.trimIndent(),
+        )
+        val http = EndpointRequests.http(project, endpoint("PUT", "/carts"))
+        val body = com.google.gson.JsonParser.parseString(http.substringAfter("Content-Type: application/json\n\n"))
+        assertEquals(
+            com.google.gson.JsonParser.parseString(
+                """{"customer_id":"string","deliverOn":"2026-01-01","lines":{"items":[{"sku":"string","quantity":0}]}}""",
+            ),
+            body,
+        )
+        val curl = EndpointRequests.curl(project, endpoint("PUT", "/carts"))
+        assertTrue(curl, curl.contains("-d '{\"customer_id\":\"string\","))
     }
 
     fun `test path variables become http client variables and request params become the query`() {

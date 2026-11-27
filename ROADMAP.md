@@ -51,7 +51,7 @@ Target: IntelliJ IDEA 2025.3+ (unified distribution). Stack: Kotlin, IntelliJ Pl
 - [x] Secrets masked before leaving the application (auth headers, password/token fields); loopback + token only
 - [ ] Spring Boot 2 / javax servlet, Gradle `bootRun` helper, `.jar` launch (fat jar class loader)
 - [ ] Service-method tree (calls between beans) and recording of non-HTTP outgoing calls
-- [ ] Feign recordings served as stubs
+- [x] Mocked responses: Feign client methods and endpoints answered by the recorder from `.tendril/mocks` files (created from the code with a sample body, or from a recording), with conditions, delay and network faults; Mocks tab with switches
 - [x] SQL tab in incoming HTTP recording details: opt-in capture of synchronous JDBC prepared statements, with execution count and total duration per template. Replay the request to check counts and timing after a change.
 
 ## Kotlin support (measured by KotlinSupportProbe, see build/kotlin-support.txt)
@@ -67,9 +67,10 @@ Target: IntelliJ IDEA 2025.3+ (unified distribution). Stack: Kotlin, IntelliJ Pl
 ## Phase 8 — Recordings, deeper
 - [ ] N+1 warning: a statement template run many times in one request gets a badge in the SQL tab, with a link to the repository method that issued it
 - [ ] Compare two recordings of the same endpoint side by side: response body, duration, SQL counts, Feign calls (before/after a change)
-- [ ] Generate a `MockMvc` / `WebTestClient` test from a recording (Feign calls as mocks, recorded response as assertions)
+- [x] Generate a `MockMvc` test from a recording (Feign calls as `@MockitoBean` stubs, recorded response as assertions), Java or Kotlin
+- [ ] The same for WebFlux (`WebTestClient`), and appending to an existing test class instead of a new one
 - [ ] Export and import recordings (`.http` or HAR) to share them and replay them elsewhere
-- [ ] Fault injection for outgoing calls: from a Feign recording, make the next calls of that client return a chosen status or wait a chosen time (through the recorder agent), to exercise retry, circuit breaker and fallback code without touching the other service
+- [x] Fault injection for outgoing calls, through mocks: a chosen status, `delayMs`, or `fault` (`timeout`, `refused`), to exercise retry, circuit breaker and fallback code without touching the other service
 - [ ] Endpoints with no test: an Endpoints filter for mappings whose URL appears in no `MockMvc` / `WebTestClient` / `@WebMvcTest` test
 - [ ] Across services: when both sides run the recorder, the agent adds a header to outgoing calls; a Feign recording opens the incoming recording it caused in the other service, giving one timeline over several services
 - [ ] Logs tab: the log lines written while serving a request (matched by MDC or trace id)
@@ -98,11 +99,13 @@ Target: IntelliJ IDEA 2025.3+ (unified distribution). Stack: Kotlin, IntelliJ Pl
 - (Kotlin quick fixes: see Kotlin support)
 
 ## Phase 11 — Messaging and contracts
+- [x] Send Test Message to a `@KafkaListener` / `@RabbitListener` through the running application (sample payload from the parameter type, destination from the annotation and config)
+- [ ] Send Test Message without a broker: call the listener method in the application directly (no converters, retries or transactions)
 - [ ] Messaging window: `@KafkaListener` / `@RabbitListener` (incoming) and `KafkaTemplate` / `RabbitTemplate` sends (outgoing), topic and queue names resolved from config
 - [ ] OpenAPI: generate `openapi.yaml` from the endpoints, or report differences between an existing spec and the code
 - [ ] Actuator: metrics and `httpexchanges` tab with simple charts
 - [ ] Outgoing HTTP beyond Feign: `RestClient`, `WebClient`, `RestTemplate` and `@HttpExchange` interfaces in the Outgoing tab, with addresses resolved per profile
-- [ ] Sample JSON body in generated `.http` requests, built from the request DTO (`@JsonProperty`, `@JsonIgnore` respected)
+- [x] Sample JSON body in generated `.http` requests and cURL, built from the request DTO (`@JsonProperty`, `@JsonIgnore` respected); shared with mocks
 - [ ] Error mapping per endpoint: which exception becomes which status, from `@ControllerAdvice` / `@ExceptionHandler`
 
 ## Phase 11b — Service calls across projects
@@ -111,6 +114,8 @@ Target: IntelliJ IDEA 2025.3+ (unified distribution). Stack: Kotlin, IntelliJ Pl
 - [ ] `WebClient` / `RestClient` / `RestTemplate` calls and `axios` / wrapper functions of the frontend (configurable names)
 - [ ] Dev proxy of the frontend (`package.json` `proxy`, Vite `server.proxy`) to tell which application a relative `fetch` goes to
 - [ ] A Service Map window listing the whole graph, with the calls that match nothing
+- [x] Create Feign Client Method from a controller handler, into the BFF (or this project), with the DTOs it needs
+- [ ] Create the TypeScript types and `fetch` functions of endpoints in the frontend
 
 ## Phase 12 — Spring Data JPA
 - [x] Entity model: `@Entity` / `@Embeddable` / `@MappedSuperclass` (jakarta and javax), inherited attributes, field or property access, `@Transient`, collection element types, repository domain type (Java and Kotlin)

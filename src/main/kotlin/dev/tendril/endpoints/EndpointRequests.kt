@@ -1,7 +1,9 @@
 package dev.tendril.endpoints
 
 import com.intellij.openapi.project.Project
-import com.intellij.psi.*
+import com.intellij.psi.PsiClassType
+import com.intellij.psi.PsiMethod
+import com.intellij.psi.PsiType
 import dev.tendril.config.ConfigNavigation
 import dev.tendril.config.ConfigProfiles
 import dev.tendril.config.firstNonBlank
@@ -11,16 +13,12 @@ object EndpointRequests {
     private const val PKG = "org.springframework.web.bind.annotation."
     private const val REQUEST_BODY = PKG + "RequestBody"
     private const val REQUEST_PARAM = PKG + "RequestParam"
-    private val NUMBERS = setOf(
-        "java.lang.Integer", "java.lang.Long", "java.lang.Short", "java.lang.Byte",
-        "java.lang.Double", "java.lang.Float", "java.math.BigDecimal", "java.math.BigInteger",
-    )
 
     fun url(project: Project, e: Endpoint): String = baseUrl(project) + e.path
 
     fun curl(project: Project, e: Endpoint): String {
         val parts = mutableListOf("curl -g -X ${verb(e)}")
-        val body = body(e)
+        val body = bodyOf(e.method.element, oneLine = true)
         if (body != null) parts += "-H 'Content-Type: application/json'"
         parts += "'${url(project, e)}${query(e)}'"
         if (body != null) parts += "-d '${body.replace("'", "'\\''")}'"
@@ -88,52 +86,68 @@ object EndpointRequests {
 
     private fun query(e: Endpoint): String = queryOf(e.method.element)
 
+    /**
+     * `?a=value&b=value` from the `@RequestParam` parameters, plus the fields of a Feign `@SpringQueryMap` /
+     * `@QueryMap` object with sample values; a map there becomes `{{query}}`, since its keys are only known at runtime.
+     */
     internal fun queryOf(method: PsiMethod?): String {
         method ?: return ""
-        val names = method.parameterList.parameters.mapNotNull { p ->
-            val ann = p.getAnnotation(REQUEST_PARAM) ?: return@mapNotNull null
-            ann.firstNonBlank("value", "name") ?: p.name
+        val parts = method.parameterList.parameters.flatMap { p ->
+            p.getAnnotation(REQUEST_PARAM)?.let { ann -> return@flatMap listOf("${ann.firstNonBlank("value", "name") ?: p.name}=value") }
+            if (QUERY_MAPS.any { p.getAnnotation(it) != null }) queryMapOf(p.type) else emptyList()
         }
-        return if (names.isEmpty()) "" else names.joinToString("&", prefix = "?") { "$it=value" }
+        return if (parts.isEmpty()) "" else parts.joinToString("&", prefix = "?")
+    }
+
+    private val QUERY_MAPS = listOf("org.springframework.cloud.openfeign.SpringQueryMap", "feign.QueryMap")
+
+    /**
+     * The query Feign's encoder writes for an object: one parameter per field (superclass fields too), named by the
+     * field or its `@feign.Param`, not by Jackson annotations. Nested objects are left out; a list gives one sample.
+     */
+    private fun queryMapOf(type: PsiType): List<String> {
+        val cls = (type as? PsiClassType)?.resolve() ?: return emptyList()
+        if (com.intellij.psi.util.InheritanceUtil.isInheritor(cls, "java.util.Map")) return listOf("{{query}}")
+        val fields: List<Pair<String, PsiType>> = if (cls.isRecord) cls.recordComponents.map { it.name to it.type }
+        else generateSequence(cls) { it.superClass }.takeWhile { it.qualifiedName?.startsWith("java.") != true }.toList()
+            .asReversed().flatMap { c ->
+                c.fields.filter {
+                    it !is com.intellij.psi.PsiEnumConstant && !it.hasModifierProperty(com.intellij.psi.PsiModifier.STATIC) &&
+                        !it.hasModifierProperty(com.intellij.psi.PsiModifier.TRANSIENT)
+                }.map { f -> (f.getAnnotation("feign.Param")?.firstNonBlank("value") ?: f.name) to f.type }
+            }
+        return fields.mapNotNull { (name, fieldType) ->
+            val sample = dev.tendril.mocks.SampleJson.of(fieldType)
+            val scalar = if (sample is com.google.gson.JsonArray) sample.firstOrNull() else sample
+            scalar?.takeIf { it.isJsonPrimitive }?.let { "$name=${java.net.URLEncoder.encode(it.asString, Charsets.UTF_8)}" }
+        }
     }
 
     private fun body(e: Endpoint): String? = bodyOf(e.method.element)
 
-    internal fun bodyOf(method: PsiMethod?): String? {
-        val param = method?.parameterList?.parameters?.firstOrNull { it.getAnnotation(REQUEST_BODY) != null }
+    private val pretty = com.google.gson.GsonBuilder().disableHtmlEscaping().setPrettyPrinting().create()
+    private val compact = com.google.gson.GsonBuilder().disableHtmlEscaping().create()
+
+    /**
+     * A sample JSON body for the `@RequestBody` parameter of [method], built from its type (fields of DTOs, records
+     * and Kotlin data classes with `@JsonProperty` names, one element per collection). With [implicit], as for a
+     * Feign method, an unannotated parameter is the body too. Pretty-printed, or on one line with [oneLine].
+     */
+    internal fun bodyOf(method: PsiMethod?, implicit: Boolean = false, oneLine: Boolean = false): String? {
+        val params = method?.parameterList?.parameters ?: return null
+        val param = params.firstOrNull { it.getAnnotation(REQUEST_BODY) != null }
+            ?: params.takeIf { implicit }?.firstOrNull { p -> p.annotations.all(::isNullability) && !isNotBody(p.type) }
             ?: return null
-        return skeleton(param.type, 0, 0)
+        val sample = dev.tendril.mocks.SampleJson.of(param.type) ?: return null
+        return (if (oneLine) compact else pretty).toJson(sample)
     }
 
-    /** A JSON template for [type]: scalar defaults, nested objects up to three levels. */
-    private fun skeleton(type: PsiType, depth: Int, indent: Int): String {
-        if (type is PsiPrimitiveType) return when (type.canonicalText) {
-            "boolean" -> "false"
-            "char" -> "\"a\""
-            else -> "0"
-        }
-        if (type is PsiArrayType) return "[]"
-        val cls = (type as? PsiClassType)?.resolve() ?: return "null"
-        val q = cls.qualifiedName.orEmpty()
-        return when {
-            q == "java.lang.String" || q == "java.lang.CharSequence" -> "\"string\""
-            q in NUMBERS -> "0"
-            q == "java.lang.Boolean" -> "false"
-            q.startsWith("java.time.") || q == "java.util.Date" -> "\"2024-01-01T00:00:00\""
-            q == "java.util.Map" || q.endsWith("Map") && q.startsWith("java.util.") -> "{}"
-            q.startsWith("java.util.") -> "[]"
-            q.startsWith("java.") -> "null"
-            cls.isEnum -> "\"${cls.fields.filterIsInstance<PsiEnumConstant>().firstOrNull()?.name ?: ""}\""
-            depth >= 3 -> "{}"
-            else -> {
-                val fields = cls.allFields.filter { !it.hasModifierProperty(PsiModifier.STATIC) }
-                if (fields.isEmpty()) "{}" else {
-                    val pad = "  ".repeat(indent + 1)
-                    fields.joinToString(",\n", prefix = "{\n", postfix = "\n${"  ".repeat(indent)}}") {
-                        "$pad\"${it.name}\": ${skeleton(it.type, depth + 1, indent + 1)}"
-                    }
-                }
-            }
-        }
+    /** Kotlin light parameters carry these without anyone writing them. */
+    private fun isNullability(a: com.intellij.psi.PsiAnnotation) = a.qualifiedName?.startsWith("org.jetbrains.annotations.") == true
+
+    /** Parameters Feign handles itself, never the body. */
+    private fun isNotBody(type: PsiType): Boolean {
+        val name = (type as? PsiClassType)?.resolve()?.qualifiedName ?: return false
+        return name == "java.net.URI" || name.startsWith("feign.") || name.startsWith("org.springframework.data.domain.")
     }
 }

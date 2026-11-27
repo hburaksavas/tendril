@@ -6,13 +6,17 @@ import feign.Request;
 import feign.Response;
 
 import java.io.IOException;
+import java.net.ConnectException;
+import java.net.SocketTimeoutException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Records the calls of every Feign client. Feign hands the final client (after load balancing) to
+ * Records the calls of every Feign client, and answers those the IDE mocked ({@link Mocks}) without making them.
+ * Feign hands the final client (after load balancing) to
  * {@link Capability#enrich(Client)}, so wrapping it there does not disturb Spring Cloud's own client handling.
  */
 public final class FeignRecording implements Capability {
@@ -25,7 +29,7 @@ public final class FeignRecording implements Capability {
         return new RecordingClient(client);
     }
 
-    private static final class RecordingClient implements Client {
+    static final class RecordingClient implements Client {
         private final Client delegate;
 
         RecordingClient(Client delegate) {
@@ -41,8 +45,10 @@ public final class FeignRecording implements Capability {
             byte[] body = null;
             boolean buffered = false;
             String error = null;
+            Mocks.Rule mock = null;
             try {
-                Response response = delegate.execute(request, options);
+                mock = mockFor(request);
+                Response response = mock != null ? answer(mock, request) : delegate.execute(request, options);
                 result = response;
                 if (response.body() != null && length(response) <= BUFFER_LIMIT) {
                     try (Response original = response) {
@@ -58,11 +64,50 @@ public final class FeignRecording implements Capability {
             } finally {
                 try {
                     record(request, result, buffered ? body : null, error, flow, startedAt,
-                            (System.nanoTime() - started) / 1_000_000);
+                            (System.nanoTime() - started) / 1_000_000, mock);
                 } catch (RuntimeException ignored) {
                     // recording must never affect the application
                 }
             }
+        }
+
+        private static Mocks.Rule mockFor(Request request) {
+            try {
+                return Mocks.feign(configKey(request), request.httpMethod().name(), request.url(), request.headers(), request.body());
+            } catch (RuntimeException e) {
+                return null; // a broken rule must not break the call
+            }
+        }
+
+        private static String configKey(Request request) {
+            try {
+                return request.requestTemplate() != null && request.requestTemplate().methodMetadata() != null
+                        ? request.requestTemplate().methodMetadata().configKey() : null;
+            } catch (RuntimeException e) {
+                return null;
+            }
+        }
+
+        /** The mocked response, after its delay; a fault is thrown as the real client would. */
+        static Response answer(Mocks.Rule mock, Request request) throws IOException {
+            Mocks.delay(mock);
+            if ("timeout".equals(mock.fault)) {
+                throw new SocketTimeoutException("Read timed out (mocked by Tendril)");
+            }
+            if ("refused".equals(mock.fault)) {
+                throw new ConnectException("Connection refused (mocked by Tendril)");
+            }
+            Map<String, Collection<String>> headers = new LinkedHashMap<>();
+            for (String[] h : mock.responseHeaders) {
+                headers.computeIfAbsent(h[0], k -> new ArrayList<>()).add(h[1]);
+            }
+            return Response.builder()
+                    .status(mock.status)
+                    .reason(Mocks.reason(mock.status))
+                    .request(request)
+                    .headers(headers)
+                    .body(mock.body)
+                    .build();
         }
 
         private static long length(Response response) {
@@ -71,7 +116,7 @@ public final class FeignRecording implements Capability {
         }
 
         private void record(Request request, Response response, byte[] body, String error, long flow, long startedAt,
-                            long millis) {
+                            long millis, Mocks.Rule mock) {
             Json event = Json.object()
                     .str("kind", "http_out")
                     .str("project", Config.project())
@@ -96,6 +141,9 @@ public final class FeignRecording implements Capability {
             }
             if (error != null) {
                 event.str("error", error);
+            }
+            if (mock != null) {
+                event.str("mock", mock.label.isEmpty() ? mock.id : mock.label);
             }
             Sender.send(event.build());
         }

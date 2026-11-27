@@ -14,7 +14,10 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/** Records every incoming HTTP request with its response. Actuator and event streams are left alone. */
+/**
+ * Records every incoming HTTP request with its response, and answers those the IDE mocked ({@link Mocks}) without
+ * calling the application. Actuator and event streams are left alone.
+ */
 final class HttpInFilter extends OncePerRequestFilter {
 
     @Override
@@ -38,13 +41,18 @@ final class HttpInFilter extends OncePerRequestFilter {
         SqlRecording sql = SqlRecording.begin();
         long startedAt = System.currentTimeMillis();
         long started = System.nanoTime();
+        Mocks.Rule mock = mockFor(request);
         try {
-            chain.doFilter(wrappedRequest, wrappedResponse);
+            if (mock != null) {
+                serve(mock, wrappedResponse);
+            } else {
+                chain.doFilter(wrappedRequest, wrappedResponse);
+            }
         } finally {
             try {
                 if (!request.isAsyncStarted()) {
                     try {
-                        record(request, wrappedRequest, wrappedResponse, flow, startedAt, (System.nanoTime() - started) / 1_000_000, sql);
+                        record(request, wrappedRequest, wrappedResponse, flow, startedAt, (System.nanoTime() - started) / 1_000_000, sql, mock);
                     } catch (RuntimeException ignored) {
                         // recording must never affect the application
                     }
@@ -57,8 +65,32 @@ final class HttpInFilter extends OncePerRequestFilter {
         }
     }
 
+    private static Mocks.Rule mockFor(HttpServletRequest request) {
+        try {
+            return Mocks.http(request.getMethod(), request.getRequestURI(), request.getQueryString(), request::getHeader);
+        } catch (RuntimeException e) {
+            return null; // a broken rule must not break the request
+        }
+    }
+
+    static void serve(Mocks.Rule mock, HttpServletResponse response) throws IOException {
+        Mocks.delay(mock);
+        response.setStatus(mock.status);
+        for (String[] h : mock.responseHeaders) {
+            if (h[0].equalsIgnoreCase("Content-Type")) {
+                response.setContentType(h[1]);
+            } else if (!h[0].equalsIgnoreCase("Content-Length") && !h[0].equalsIgnoreCase("Transfer-Encoding")) {
+                response.addHeader(h[0], h[1]);
+            }
+        }
+        if (mock.body.length > 0) {
+            response.getOutputStream().write(mock.body);
+        }
+    }
+
     private void record(HttpServletRequest original, ContentCachingRequestWrapper request,
-                        ContentCachingResponseWrapper response, long flow, long startedAt, long millis, SqlRecording sql) {
+                        ContentCachingResponseWrapper response, long flow, long startedAt, long millis, SqlRecording sql,
+                        Mocks.Rule mock) {
         StringBuffer url = original.getRequestURL();
         if (original.getQueryString() != null) {
             url.append('?').append(original.getQueryString());
@@ -103,6 +135,9 @@ final class HttpInFilter extends OncePerRequestFilter {
             event.str("pattern", pattern.toString());
         }
         sql.writeTo(event);
+        if (mock != null) {
+            event.str("mock", mock.label.isEmpty() ? mock.id : mock.label);
+        }
         Sender.send(event.build());
     }
 }

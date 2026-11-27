@@ -4,6 +4,36 @@ All notable changes to Tendril. The section of the version being built becomes t
 
 ## [Unreleased]
 
+### Mocked responses
+- Right-click | Mock Response inside a Feign client method or a controller handler: a mock file under `.tendril/mocks` with a sample body built from the return type (DTOs, records, Kotlin data classes, collections, `ResponseEntity`, `Optional`, `Mono`), opened for editing
+- While the application runs with the recorder, a Feign call that matches a mock is answered by it without reaching the service (matched by client method, whatever the address, Eureka or load balancer), and a request that matches an endpoint mock is answered without reaching the controller
+- A mock can narrow what it answers (the end of the path, query parameters, headers, and for Feign a text the body contains), wait before answering (`delayMs`), and for Feign fail like the network would (`fault`: `timeout` or `refused`) to exercise retries, circuit breakers and fallbacks
+- "Mock This Response" on a recorded Feign call or request turns what the service or controller returned into a mock
+- Mocks tab in the Recordings window: every mock with a switch, all mocks on or off at once, and whether the application holds them. Edits apply when the file is saved, and a restarted application gets the mocks again on its own
+- Recordings answered by a mock are marked "mocked"
+
+### Feign clients from the backend
+- Right-click | Create Feign Client Method… inside a controller handler: the Feign method that calls it is written into an open project (the BFF), or into this one, in the client that already calls this service (found by name or by a local address on the backend's port) or in a new one
+- The method follows the endpoint: path (below the client's `path`, context path included), path variables, query parameters (optional ones nullable), headers, body, an object of query parameters as `@SpringQueryMap`, `Pageable`; `ResponseEntity`, `Optional`, `Mono` and futures are unwrapped, `Flux` becomes a list. Server-side parameters (request, principal, model) are left out
+- The backend classes the endpoint uses are copied as DTOs: records (classes before Java 16) or Kotlin data classes with their JSON names, enums with their constants, superclass fields included; a class of that name already in the project is used instead
+- A new client gets `name` from `spring.application.name`, `path` from the context path, and, when the project's clients give addresses, `url = "${service.url:http://localhost:port}"`. A method that calls the endpoint already is pointed out
+- Java or Kotlin, as the client or the project is written; imports are added and the code is formatted
+
+### Test messages
+- Right-click | Send Test Message inside a `@KafkaListener` or `@RabbitListener` method (or a `@KafkaHandler` / `@RabbitHandler` of a class-level listener): a dialog with the topic or queue read from the annotation (placeholders resolved from the config, `@QueueBinding` exchange and key) and a sample payload built from the parameter type, past `@Header`, `Acknowledgment`, `Channel`, and inside `Message<T>` / `ConsumerRecord<K, V>`
+- The message is sent through the running application with its own connection settings (SASL, SSL), so nothing is configured in the IDE. Kafka records go out as the bytes written, not encoded again by a `JsonSerializer`, with the `__TypeId__` header a `JsonDeserializer` expects (optional)
+- Batch listeners take a JSON array, one message per element; the last payload, key and headers are kept per listener. What the listener did shows in Recordings | Messages
+
+### Tests from recordings
+- "Generate Test" on a recorded request writes a `@SpringBootTest` + `MockMvc` test into the controller module's test folder, in the controller's language (Java or Kotlin): the recorded request is sent again (method, path and query, context path, headers, body) and the recorded status and body are expected (`content().json(...)`, lenient)
+- The Feign calls made while serving the request become `@MockitoBean` stubs (`@MockBean` before Boot 3.4) returning what they returned, read into the method's return type with the application's `ObjectMapper` (`Optional` and `ResponseEntity` included); several calls of one method return in order
+- What the test cannot do by itself is written as a comment: headers the recorder masked, Feign calls that failed (to stub with `willThrow`), secret fields masked in the response
+
+### Requests
+- Generated `.http` requests and cURL commands get a fuller sample body from the request DTO: `@JsonProperty` names, `@JsonIgnore` and `transient` fields left out, records and Kotlin data classes, generics, one sample element per list, superclass fields
+- A Feign method's body is found without `@RequestBody` too, as Feign does; cURL puts the body on one line
+- A Feign `@SpringQueryMap` / `@QueryMap` parameter fills the query of the generated request with its fields (superclass fields, `@feign.Param` names, sample values); a `Map` becomes `{{query}}`
+
 ## [0.8.0]
 
 ### Service calls across projects

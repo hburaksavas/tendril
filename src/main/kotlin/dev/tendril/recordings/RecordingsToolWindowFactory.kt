@@ -93,6 +93,7 @@ internal class RecordingsPanel(private val project: Project) : JPanel(BorderLayo
         tabs.addIconTab(AllIcons.Actions.Download, "Incoming requests", panes.getValue(RecordingKind.INCOMING))
         tabs.addIconTab(AllIcons.Actions.Upload, "Outgoing calls", panes.getValue(RecordingKind.OUTGOING))
         tabs.addIconTab(AllIcons.Toolwindows.ToolWindowMessages, "Messages", panes.getValue(RecordingKind.MESSAGE))
+        tabs.addIconTab(AllIcons.FileTypes.Json, "Mocks: responses the recorder gives instead of a Feign call or a controller", dev.tendril.mocks.MocksPane(project, this))
 
         val top = JPanel(BorderLayout()).apply {
             border = dev.tendril.ui.Chrome.topRow()
@@ -251,6 +252,15 @@ internal class RecordingPane(
     private val replayButton = ActionLink(if (kind == RecordingKind.MESSAGE) "Republish" else if (kind == RecordingKind.OUTGOING) "Send again" else "Replay").apply { icon = AllIcons.Actions.Execute }
     private val openButton = ActionLink("Open as .http").apply { icon = AllIcons.Actions.EditSource }
     private val sourceButton = ActionLink("Go to Controller").apply { isVisible = false }
+    private val testButton = ActionLink("Generate Test").apply {
+        icon = AllIcons.RunConfigurations.Junit
+        toolTipText = "A MockMvc test that sends this request and expects this response; the Feign calls it made become stubs"
+        isVisible = kind == RecordingKind.INCOMING
+    }
+    private val mockButton = ActionLink("Mock This Response").apply {
+        icon = AllIcons.FileTypes.Json
+        toolTipText = "Create a mock that answers like this, instead of the ${if (kind == RecordingKind.OUTGOING) "service" else "controller"}"
+    }
     private val hint = JBLabel(" ")
 
     init {
@@ -281,12 +291,17 @@ internal class RecordingPane(
         replayButton.addActionListener { replaySelected() }
         openButton.addActionListener { openSelected() }
         sourceButton.addActionListener { navigateToController(parent) }
+        mockButton.addActionListener { list.selectedValue?.let { dev.tendril.mocks.MockResponseAction.fromRecording(project, it) } }
+        mockButton.isVisible = kind != RecordingKind.MESSAGE
+        testButton.addActionListener { generateTest(parent) }
         openButton.isVisible = kind != RecordingKind.MESSAGE
         val actions = JPanel(FlowLayout(FlowLayout.LEFT, 14, 0)).apply {
             isOpaque = false
             add(replayButton)
             add(openButton)
             add(sourceButton)
+            add(mockButton)
+            add(testButton)
             add(hint.apply { foreground = JBColor.GRAY })
         }
         val titles = JPanel(BorderLayout()).apply {
@@ -402,6 +417,7 @@ internal class RecordingPane(
                 if (r.durationMs > 0) add(Fragment("   ${r.durationMs} ms", Palette.MUTED))
                 add(Fragment("   ${RecordingText.TIME.format(Date(r.time))}", Palette.MUTED))
             } else {
+                if (r.mock != null) add(Fragment("   mocked", Palette.VARIABLE, bold = true))
                 add(Fragment("   ${r.durationMs} ms", Palette.MUTED))
             }
         }
@@ -437,6 +453,8 @@ internal class RecordingPane(
         replayButton.isEnabled = r != null && canReplay(r)
         openButton.isEnabled = r != null
         sourceButton.isVisible = kind == RecordingKind.INCOMING && r?.let { it.handler != null || it.pattern != null } == true
+        mockButton.isEnabled = r != null && r.mock == null && dev.tendril.mocks.MockFactory.fromRecording(r) != null
+        testButton.isEnabled = r != null && r.status != null
         hint.text = if (r != null && !canReplay(r)) cannotReplay(r) else " "
         summary.clear()
         facts.clear()
@@ -455,6 +473,7 @@ internal class RecordingPane(
                 }
             }
             val line = listOfNotNull(
+                r.mock?.let { "answered by the mock $it" },
                 r.durationMs.takeIf { kind != RecordingKind.MESSAGE || it > 0 }?.let { "$it ms" },
                 r.handler?.let { "handled by $it" }, r.client?.let { "client $it" },
                 r.flow.takeIf { it > 0 }?.let { "flow $it" },
@@ -486,6 +505,15 @@ internal class RecordingPane(
                 }
             }
             Editors.show(sql, text, PlainTextFileType.INSTANCE)
+        }
+    }
+
+    private fun generateTest(parent: Disposable) {
+        val recording = list.selectedValue ?: return
+        val outgoing = RecordingStore.getInstance(project).snapshot(RecordingKind.OUTGOING)
+        readInBackground(project, parent, { dev.tendril.recordings.tests.RecordedTests.plan(project, recording, outgoing) }) { plan ->
+            val written = plan.mapCatching { dev.tendril.recordings.tests.RecordedTests.write(project, it).getOrThrow() }
+            written.onFailure { Messages.showInfoMessage(project, it.message ?: it.javaClass.simpleName, "Generate Test") }
         }
     }
 

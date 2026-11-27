@@ -126,6 +126,9 @@ class RecorderServer : Disposable {
             if (store != null) {
                 if (json.get("kind")?.asString == "hello") {
                     store.touch(json.get("control")?.asInt)
+                    // a recorder that knows mocks reports the version it holds ("" for none)
+                    dev.tendril.mocks.MockStore.getInstance(store.project)
+                        .onHello(json.get("mocks")?.takeIf { it.isJsonPrimitive }?.asString)
                 } else {
                     Recording.fromJson(json)?.let {
                         store.touch(null)
@@ -154,17 +157,35 @@ class RecorderServer : Disposable {
             add("bodyEncoding" to (r.bodyEncoding ?: "text"))
             add("body" to (r.body ?: ""))
             r.headers.forEach { (k, v) -> add("h.$k" to v) }
-        }.joinToString("&") { (k, v) ->
+        }
+        post(port, "/replay", form)
+        "Republished"
+    }
+
+    /**
+     * Sends a new message written in the IDE through the running application (its own connection settings): to a
+     * Kafka topic, or to a Rabbit exchange and routing key. Answers where it went. Blocks: call off the EDT.
+     */
+    fun sendMessage(project: Project, form: List<Pair<String, String>>): Result<String> = runCatching {
+        val port = RecordingStore.getInstance(project).controlPort
+        check(port > 0 && RecorderAgent.isConnected(project)) { "The application is not connected. Start it with the recorder first." }
+        post(port, "/send", form)
+    }
+
+    private fun post(port: Int, path: String, form: List<Pair<String, String>>): String {
+        val body = form.joinToString("&") { (k, v) ->
             URLEncoder.encode(k, StandardCharsets.UTF_8) + "=" + URLEncoder.encode(v, StandardCharsets.UTF_8)
         }
-        val request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:$port/replay"))
-            .timeout(Duration.ofSeconds(15))
+        val request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:$port$path"))
+            .timeout(Duration.ofSeconds(20))
             .header("Content-Type", "application/x-www-form-urlencoded")
             .header("X-Tendril-Token", RecorderSettings.getInstance().token)
-            .POST(HttpRequest.BodyPublishers.ofString(form)).build()
+            .POST(HttpRequest.BodyPublishers.ofString(body)).build()
         val response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString())
+        // a recorder from before this endpoint answers 404
+        check(response.statusCode() != 404) { "Restart the application: its recorder is older than this plugin" }
         check(response.statusCode() == 200) { response.body().ifBlank { "HTTP ${response.statusCode()}" } }
-        "Republished"
+        return response.body()
     }
 
     override fun dispose() {

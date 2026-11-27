@@ -45,6 +45,9 @@ dependencies {
     testImplementation("org.springframework.boot:spring-boot-starter-web")
     testImplementation("org.springframework.boot:spring-boot-starter-jdbc")
     testRuntimeOnly("com.h2database:h2")
+    testImplementation("io.github.openfeign:feign-core:13.6")
+    testImplementation("org.springframework.kafka:spring-kafka")
+    testImplementation("org.springframework.amqp:spring-rabbit")
 }
 
 tasks.test {

@@ -19,7 +19,7 @@ object FeignRequests {
         val method = call.method.element
         val parts = mutableListOf("curl -g -X ${EndpointRequests.verbOf(call.httpMethod)}")
         for ((header, value) in headers(method)) parts += "-H '$header: $value'"
-        val body = EndpointRequests.bodyOf(method)
+        val body = EndpointRequests.bodyOf(method, implicit = true, oneLine = true)
         if (body != null) parts += "-H 'Content-Type: application/json'"
         parts += "'${url(info, call)}${EndpointRequests.queryOf(method)}'"
         if (body != null) parts += "-d '${body.replace("'", "'\\''")}'"
@@ -36,7 +36,7 @@ object FeignRequests {
             .append(EndpointRequests.queryOf(method)).append('\n')
         for ((header, value) in headers(method)) append("$header: $value\n")
         append("# Authorization: Bearer {{token}}\n")
-        val body = EndpointRequests.bodyOf(method)
+        val body = EndpointRequests.bodyOf(method, implicit = true)
         if (body != null) append("Content-Type: application/json\n\n").append(body).append('\n')
     }
 

@@ -40,6 +40,8 @@ class Recording(
     val replayable: Boolean,
     val detail: String?,
     val sql: List<SqlSummary> = emptyList(),
+    /** The mock that answered instead of the real service or controller, when one did. */
+    val mock: String? = null,
 ) {
     companion object {
         fun fromJson(o: JsonObject): Recording? {
@@ -88,6 +90,7 @@ class Recording(
                         summary.long("durationMicros") ?: return@mapNotNull null,
                     )
                 }.orEmpty(),
+                mock = o.str("mock"),
             )
         }
 
@@ -102,7 +105,7 @@ class Recording(
 
 /** What the recorder sent for one project: the latest [max] recordings of each kind. */
 @Service(Service.Level.PROJECT)
-class RecordingStore(private val project: Project) : Disposable {
+class RecordingStore(val project: Project) : Disposable {
     private val lists = RecordingKind.entries.associateWith { ArrayDeque<Recording>() }
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
 

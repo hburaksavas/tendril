@@ -170,5 +170,17 @@
                 text="Find Service Calls" description="Who calls this endpoint or Feign method across the linked projects, and what it calls">
             <add-to-group group-id="EditorPopupMenu" anchor="after" relative-to-action="Tendril.SendHttpRequest"/>
         </action>
+        <action id="Tendril.CreateFeignClient" class="dev.tendril.calls.clientgen.CreateFeignClientAction"
+                text="Create Feign Client Method…" description="Write the Feign method that calls this endpoint, with its request and response classes, into an open project (the BFF)">
+            <add-to-group group-id="EditorPopupMenu" anchor="after" relative-to-action="Tendril.FindServiceCalls"/>
+        </action>
+        <action id="Tendril.MockResponse" class="dev.tendril.mocks.MockResponseAction"
+                text="Mock Response" description="Answer this Feign method or endpoint with a mocked response while the application runs with the recorder">
+            <add-to-group group-id="EditorPopupMenu" anchor="after" relative-to-action="Tendril.FindServiceCalls"/>
+        </action>
+        <action id="Tendril.SendTestMessage" class="dev.tendril.messaging.SendTestMessageAction"
+                text="Send Test Message" description="Send a message to this listener's topic or queue through the running application">
+            <add-to-group group-id="EditorPopupMenu" anchor="after" relative-to-action="Tendril.MockResponse"/>
+        </action>
     </actions>
 </idea-plugin>
