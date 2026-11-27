@@ -4,6 +4,9 @@ All notable changes to Tendril. The section of the version being built becomes t
 
 ## [Unreleased]
 
+### Fixes
+- Profile groups (`spring.profiles.group.production: proddb, prodmq`) and their members are offered as profiles even without an `application-production.yml`: in the Feign Clients profile chooser and in `spring.profiles.active` completion. Choosing a group already applied its members
+
 ## [0.9.0]
 
 ### Mocked responses

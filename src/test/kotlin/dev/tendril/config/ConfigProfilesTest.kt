@@ -68,6 +68,42 @@ class ConfigProfilesTest : SpringTestCase() {
         }
     }
 
+    fun `test profile groups and their members are known profiles without files of their own`() {
+        yaml(
+            "application.yml",
+            """
+            spring:
+              profiles:
+                group:
+                  production:
+                    - "proddb"
+                    - "prodmq"
+                  Blue-Green: canary, stable
+            """,
+        )
+        val profiles = ConfigProfiles.knownProfiles(project)
+        assertTrue(profiles.toString(), profiles.containsAll(setOf("production", "proddb", "prodmq", "Blue-Green", "canary", "stable")))
+    }
+
+    fun `test profile groups written in properties and as a dotted yaml key are known profiles`() {
+        yaml("application.properties", "spring.profiles.group.qa[0]=qadb\nspring.profiles.group.qa[1]=qamq")
+        yaml("bootstrap.yml", "spring.profiles.group.edge: edgecache")
+        val profiles = ConfigProfiles.knownProfiles(project)
+        assertTrue(profiles.toString(), profiles.containsAll(setOf("qa", "qadb", "qamq", "edge", "edgecache")))
+        assertTrue(profiles.toString(), profiles.none { '[' in it || '.' in it })
+    }
+
+    fun `test a group inside a profile document is not a known profile`() {
+        yaml("application-staging.yml", "spring:\n  profiles:\n    group:\n      ignoredgroup: ignoredmember")
+        val profiles = ConfigProfiles.knownProfiles(project)
+        assertFalse(profiles.toString(), "ignoredgroup" in profiles || "ignoredmember" in profiles)
+    }
+
+    fun `test a selected group expands to its members`() {
+        yaml("application.yml", "spring:\n  profiles:\n    group:\n      production:\n        - proddb\n        - prodmq\n")
+        assertEquals(listOf("production", "proddb", "prodmq"), ConfigProfiles.effectiveProfiles(project, "production"))
+    }
+
     fun `test profile expressions yield the plain profile names`() {
         yaml("application.yml", "---\nspring:\n  config:\n    activate:\n      on-profile: \"cloud & !local\"\nz: 1")
         val profiles = ConfigProfiles.knownProfiles(project)

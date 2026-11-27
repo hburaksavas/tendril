@@ -129,6 +129,32 @@ object ConfigProfiles {
                     .filterTo(result) { it.isNotEmpty() }
             }
         }
+        // `spring.profiles.group.production: proddb, prodmq`: the group is a profile to choose even with no file of its own
+        for ((key, elements) in ConfigNavigation.allEntries(project)) {
+            if (!key.startsWith(GROUP_PREFIX) || key.length == GROUP_PREFIX.length) continue
+            for (e in elements) {
+                if (profileOf(e) != null) continue  // Spring reads groups from the default config only
+                groupName(e)?.let { result += it }
+                result += valuesOf(e)
+            }
+        }
         return java.util.Collections.unmodifiableSortedSet(result)
+    }
+
+    /** `spring.profiles.group.` in relaxed-normalized form. */
+    private const val GROUP_PREFIX = "spring.profiles.group."
+    private val LIST_INDEX = Regex("""\[[^]]*]""")
+
+    /**
+     * The group a `spring.profiles.group.<name>` entry defines, as written (the index key is lower-cased and loses
+     * dashes). Nested YAML and dotted keys both give the full path; a properties `[0]` index is dropped.
+     */
+    private fun groupName(element: PsiElement): String? {
+        val path = when (element) {
+            is YAMLKeyValue -> ConfigNavigation.yamlPath(element)
+            is Property -> element.unescapedKey ?: return null
+            else -> return null
+        }
+        return path.replace(LIST_INDEX, "").split('.').drop(3).joinToString(".").takeIf { it.isNotBlank() }
     }
 }
