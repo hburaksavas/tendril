@@ -4,6 +4,8 @@ All notable changes to Tendril. The section of the version being built becomes t
 
 ## [Unreleased]
 
+## [0.9.0]
+
 ### Mocked responses
 - Right-click | Mock Response inside a Feign client method or a controller handler: a mock file under `.tendril/mocks` with a sample body built from the return type (DTOs, records, Kotlin data classes, collections, `ResponseEntity`, `Optional`, `Mono`), opened for editing
 - While the application runs with the recorder, a Feign call that matches a mock is answered by it without reaching the service (matched by client method, whatever the address, Eureka or load balancer), and a request that matches an endpoint mock is answered without reaching the controller
