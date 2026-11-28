@@ -136,7 +136,7 @@ internal class ActuatorPanel(
         loggersView.actions = { node ->
             val name = node.key
             if (name == null) emptyList() else
-                (LOG_LEVELS.map { level -> loggerAction("Set $level", name, level) } +
+                (ActuatorLoggers.LEVELS.map { level -> loggerAction("Set $level", name, level) } +
                     loggerAction("Reset (inherit from parent)", name, null))
         }
         views.forEach { it.retry = ::refreshAll }
@@ -160,6 +160,7 @@ internal class ActuatorPanel(
             return
         }
         view.setMessage("Loading…")
+        ActuatorLoggers.remember(project, base)
         request("$base/${view.path}") { result ->
             if (view.generation == generation && !disposed) {
                 view.loaded = true
@@ -181,16 +182,7 @@ internal class ActuatorPanel(
     private fun setLogLevel(logger: String, level: String?) {
         val base = url.text.trim().trimEnd('/')
         ApplicationManager.getApplication().executeOnPooledThread {
-            val result = runCatching {
-                val body = if (level == null) """{"configuredLevel":null}""" else """{"configuredLevel":"$level"}"""
-                val request = HttpRequest.newBuilder(URI.create("$base/loggers/$logger"))
-                    .timeout(Duration.ofSeconds(10))
-                    .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(body)).build()
-                val status = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build()
-                    .send(request, HttpResponse.BodyHandlers.discarding()).statusCode()
-                if (status !in 200..299) throw HttpStatus(status)
-            }
+            val result = ActuatorLoggers.setLevel(base, logger, level)
             ApplicationManager.getApplication().invokeLater({
                 result.onSuccess { if (base == url.text.trim().trimEnd('/')) fetch(loggersView) }.onFailure {
                     NotificationGroupManager.getInstance().getNotificationGroup("Tendril")
@@ -433,7 +425,6 @@ private fun parseEnv(json: JsonObject): List<ActuatorNode> {
     return out
 }
 
-private val LOG_LEVELS = listOf("TRACE", "DEBUG", "INFO", "WARN", "ERROR", "OFF")
 
 private fun parseLoggers(json: JsonObject): List<ActuatorNode> {
     val loggers = json.get("loggers").obj() ?: return emptyList()

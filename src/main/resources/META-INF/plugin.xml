@@ -17,7 +17,8 @@
         <li><b>HTTP client</b>: send requests from <code>.http</code> files or straight from an endpoint or Feign call, with
             environment variables and a formatted response.</li>
         <li><b>Running application</b>: an Actuator window (beans, mappings, environment, loggers, conditions) and a recorder
-            that captures incoming requests, Feign calls and Rabbit/Kafka listener input for replay.</li>
+            that captures incoming requests, Feign calls and Rabbit/Kafka listener input for replay. A failed startup report
+            links to the bean, key or port it is about, with fixes.</li>
     </ul>
     ]]></description>
 
@@ -113,6 +114,11 @@
                     factoryClass="dev.tendril.actuator.ActuatorToolWindowFactory"/>
         <toolWindow id="Batch Jobs" anchor="right" icon="/icons/batchJobs.svg"
                     factoryClass="dev.tendril.batch.BatchJobsToolWindowFactory"/>
+
+        <!-- "APPLICATION FAILED TO START" in the Run console: links to the bean, key, file or port, with fixes -->
+        <consoleFilterProvider implementation="dev.tendril.startup.StartupFailureFilterProvider"/>
+        <!-- logger column of Spring Boot console lines: go to the class, change its level -->
+        <consoleFilterProvider implementation="dev.tendril.logs.LoggerFilterProvider"/>
 
         <runConfigurationExtension implementation="dev.tendril.recordings.run.RecorderRunConfigurationExtension"/>
 

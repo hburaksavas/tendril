@@ -151,7 +151,7 @@ Target: IntelliJ IDEA 2025.3+ (unified distribution). Stack: Kotlin, IntelliJ Pl
 - [ ] Recordings: from a SQL template to the repository method that ran it; N+1 → `JOIN FETCH` / `@EntityGraph` quick fix
 
 ## Phase 13 — Startup diagnostics
-- [ ] Startup failure analyzer: the "APPLICATION FAILED TO START" report in the Run console links to the bean, config key or port it is about, with a quick fix where one exists (missing bean, property that does not bind, port in use)
+- [x] Startup failure analyzer: the "APPLICATION FAILED TO START" report in the Run console links to the bean, config key or port it is about, with a quick fix where one exists (missing bean, property that does not bind, port in use)
 - [ ] Startup timeline from Actuator `/startup`: time spent initialising each bean, on the Recordings timeline view
 
 ## Phase 14 — Security and SpEL

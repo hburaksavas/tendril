@@ -4,6 +4,16 @@ All notable changes to Tendril. The section of the version being built becomes t
 
 ## [Unreleased]
 
+### Startup failures
+- The "APPLICATION FAILED TO START" report in the Run and Debug consoles links to what it is about: the class and the field or parameter that asked for a bean, the missing bean type, each candidate of an ambiguous injection and each bean of a cycle, configuration keys, the `Origin:` position of a value that does not bind, and the port in use. The same goes for `Could not resolve placeholder` and a DataSource without `url`
+- A link with a fix opens a short list: annotate the missing class (or an implementation of the missing interface that is no bean) with `@Component`; mark one of several candidates as `@Primary`; add a missing key to `application.properties` / `.yml` with the caret on its value, or go to the key and to the code that reads it
+- Port in use: stop the run of this IDE that holds the port (also when `spring-boot:run` forked it), or set `server.port` to the next free port. Otherwise the list names the process that listens on it
+- Fixes that change code are offered for Java classes; Kotlin classes get the navigation
+
+### Console logs
+- The logger column of Spring Boot's console lines (`o.s.b.w.embedded.tomcat.TomcatWebServer`, `c.e.order.OrderService`) is a quiet link, underlined on hover. A click goes to the class, also when Logback shortened the package names; a name several classes could stand for lists them
+- The same list changes the logger's level: in the running application through Actuator `/loggers` (with its current level shown, and a reset to the parent's level), or as `logging.level.<logger>` in `application.properties` / `.yml`, changing the key when it is there already
+
 ## [0.10.1]
 
 ### Fixes

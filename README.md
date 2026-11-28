@@ -9,7 +9,7 @@ Spring Boot tooling for IntelliJ IDEA that works without an Ultimate subscriptio
 | **Spring Data JPA** | Completion, navigation and rename for entities, attributes and parameters inside `@Query`; unknown entity / attribute and parameter-binding inspections |
 | **Endpoints** | Incoming endpoints and outgoing Feign clients in one window, with the address each client resolves to per profile; focus mode; copy as cURL |
 | **HTTP client** | `.http` files with a run arrow per request, or send straight from an endpoint or a Feign call; `{{variables}}`, `http-client.env.json` |
-| **Running application** | Actuator window (health, beans, mappings, env, loggers, conditions); Recordings of incoming requests, Feign calls and Rabbit/Kafka input, with replay; mocked responses for Feign clients and endpoints |
+| **Running application** | Actuator window (health, beans, mappings, env, loggers, conditions); Recordings of incoming requests, Feign calls and Rabbit/Kafka input, with replay; mocked responses for Feign clients and endpoints; links and fixes in the "APPLICATION FAILED TO START" report; logger names in the console go to the class and change its level |
 
 See [CHANGELOG.md](CHANGELOG.md) for what each release contains and [ROADMAP.md](ROADMAP.md) for what is planned.
 

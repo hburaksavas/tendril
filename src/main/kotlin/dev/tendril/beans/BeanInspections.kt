@@ -153,12 +153,16 @@ private class AnnotateAsComponentFix(target: PsiClass) : LocalQuickFix {
     override fun startInWriteAction() = false
 
     override fun applyFix(project: Project, descriptor: ProblemDescriptor) {
-        val cls = pointer.element ?: return
-        WriteCommandAction.runWriteCommandAction(project) {
-            val annotation = cls.modifierList?.addAnnotation(SpringNames.COMPONENT) ?: return@runWriteCommandAction
-            JavaCodeStyleManager.getInstance(project).shortenClassReferences(annotation)
-        }
+        addAnnotation(project, pointer.element ?: return, SpringNames.COMPONENT)
     }
+}
+
+/** Adds the annotation [fqn] to a Java [element] (class or method) in a write command, with a short reference. */
+internal fun addAnnotation(project: Project, element: PsiModifierListOwner, fqn: String) {
+    WriteCommandAction.runWriteCommandAction(project, "Add @${fqn.substringAfterLast('.')}", null, {
+        val annotation = element.modifierList?.addAnnotation(fqn) ?: return@runWriteCommandAction
+        JavaCodeStyleManager.getInstance(project).shortenClassReferences(annotation)
+    }, element.containingFile)
 }
 
 private class ConvertToConstructorInjectionFix : LocalQuickFix {
