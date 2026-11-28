@@ -14,7 +14,7 @@ dependencies {
     compileOnly("org.springframework:spring-web")
     compileOnly("org.springframework:spring-context")
     compileOnly("jakarta.servlet:jakarta.servlet-api")
-    compileOnly("io.github.openfeign:feign-core:13.6")
+    compileOnly("io.github.openfeign:feign-core:13.18")
     compileOnly("org.springframework.amqp:spring-rabbit")
     compileOnly("org.springframework.kafka:spring-kafka")
 }
@@ -45,7 +45,7 @@ dependencies {
     testImplementation("org.springframework.boot:spring-boot-starter-web")
     testImplementation("org.springframework.boot:spring-boot-starter-jdbc")
     testRuntimeOnly("com.h2database:h2")
-    testImplementation("io.github.openfeign:feign-core:13.6")
+    testImplementation("io.github.openfeign:feign-core:13.18")
     testImplementation("org.springframework.kafka:spring-kafka")
     testImplementation("org.springframework.amqp:spring-rabbit")
 }
