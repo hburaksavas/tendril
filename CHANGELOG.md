@@ -4,6 +4,8 @@ All notable changes to Tendril. The section of the version being built becomes t
 
 ## [Unreleased]
 
+## [0.11.0]
+
 ### Startup failures
 - The "APPLICATION FAILED TO START" report in the Run and Debug consoles links to what it is about: the class and the field or parameter that asked for a bean, the missing bean type, each candidate of an ambiguous injection and each bean of a cycle, configuration keys, the `Origin:` position of a value that does not bind, and the port in use. The same goes for `Could not resolve placeholder` and a DataSource without `url`
 - A link with a fix opens a short list: annotate the missing class (or an implementation of the missing interface that is no bean) with `@Component`; mark one of several candidates as `@Primary`; add a missing key to `application.properties` / `.yml` with the caret on its value, or go to the key and to the code that reads it
