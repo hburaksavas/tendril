@@ -79,7 +79,25 @@ internal class FeignPanel(
         search.textEditor.emptyText.text = "Filter by client, address or path"
         tree.addMouseListener(object : MouseAdapter() {
             override fun mouseClicked(e: MouseEvent) {
-                if (e.clickCount == 2) navigate()
+                if (!javax.swing.SwingUtilities.isLeftMouseButton(e)) return
+                val target = addressLinkAt(e.point)
+                if (target != null && e.clickCount == 1) setAddress(target)
+                else if (target == null && e.clickCount == 2) navigate()
+            }
+        })
+        tree.addMouseMotionListener(object : java.awt.event.MouseMotionAdapter() {
+            override fun mouseMoved(e: MouseEvent) {
+                tree.cursor = if (addressLinkAt(e.point) != null) java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
+                    else java.awt.Cursor.getDefaultCursor()
+            }
+        })
+        tree.addKeyListener(object : java.awt.event.KeyAdapter() {
+            override fun keyPressed(e: java.awt.event.KeyEvent) {
+                val info = (selected() as? ClientNode)?.info ?: return
+                if (e.keyCode == java.awt.event.KeyEvent.VK_ENTER && info.resolution.url == null) {
+                    e.consume()
+                    setAddress(info)
+                }
             }
         })
         PopupHandler.installPopupMenu(tree, contextMenu(), "TendrilFeignPopup")
@@ -128,7 +146,10 @@ internal class FeignPanel(
 
     override fun dispose() {}
 
+    private var refreshVersion = 0L
+
     fun refresh() {
+        val version = ++refreshVersion
         ReadAction.nonBlocking<Pair<List<String>, List<FeignClientInfo>>> {
             val defs = FeignScanner.cached(project)
             val profile = FeignResolver.selectedProfile(project)
@@ -137,7 +158,7 @@ internal class FeignPanel(
         }
             .inSmartMode(project)
             .expireWith(this)
-            .finishOnUiThread(ModalityState.any()) { (known, infos) -> show(known, infos) }
+            .finishOnUiThread(ModalityState.any()) { (known, infos) -> if (version == refreshVersion) show(known, infos) }
             .submit(AppExecutorUtil.getAppExecutorService())
     }
 
@@ -198,29 +219,33 @@ internal class FeignPanel(
             is ClientNode -> {
                 val info = item.info
                 p.icon = AllIcons.Nodes.Interface
-                p.secondaryOnNextLine = true
                 val url = info.resolution.url
-                if (url != null) {
-                    p.primary = listOf(Fragment(info.name.ifBlank { info.def.className }, bold = true), Fragment("   "), Fragment(url))
-                    p.secondary = listOf(Fragment(info.resolution.source, Palette.MUTED))
-                } else {
-                    val missing = info.resolution.unresolved.joinToString(", ") { "\${$it}" }
-                    p.primary = listOf(
-                        Fragment(info.name.ifBlank { info.def.className }, bold = true), Fragment("   "),
-                        Fragment("No address", Palette.FAILED, bold = true),
-                    )
-                    p.secondary = listOf(
-                        Fragment(if (missing.isEmpty()) "Right-click to set one." else "Undefined: $missing. Right-click to set one.", Palette.MUTED),
-                    )
-                }
+                val name = info.name.takeIf { it.isNotBlank() && !it.contains("\${") } ?: info.def.className
+                p.primary = listOf(Fragment(name, bold = true))
+                p.secondary = if (url != null) listOf(Fragment(displayPath(url))) else listOf(
+                    Fragment("No address   ", Palette.FAILED, bold = true),
+                    Fragment(SET_ADDRESS, JBColor.namedColor("Link.activeForeground", JBColor.BLUE)),
+                )
             }
             is CallNode -> {
                 p.badge = item.call.httpMethod
                 p.badgeColor = Palette.method(item.call.httpMethod)
-                p.primary = Palette.path(FeignRequests.path(item.info, item.call))
+                p.primary = Palette.path(displayPath(FeignRequests.path(item.info, item.call)))
                 p.secondary = listOf(Fragment(item.call.methodName, Palette.MUTED))
             }
         }
+    }
+
+    private fun displayPath(value: String) = PLACEHOLDER.replace(value, "…")
+
+    private fun addressLinkAt(point: java.awt.Point): FeignClientInfo? {
+        val path = tree.getPathForLocation(point.x, point.y) ?: return null
+        val info = ((path.lastPathComponent as? DefaultMutableTreeNode)?.userObject as? ClientNode)?.info ?: return null
+        if (info.resolution.url != null) return null
+        val bounds = tree.getPathBounds(path) ?: return null
+        val end = bounds.x + bounds.width - JBUI.scale(12)
+        val width = tree.getFontMetrics(tree.font).stringWidth(SET_ADDRESS)
+        return info.takeIf { point.x in (end - width)..(end + JBUI.scale(4)) }
     }
 
     private fun selected(): Any? = (tree.lastSelectedPathComponent as? DefaultMutableTreeNode)?.userObject
@@ -374,6 +399,8 @@ internal class FeignPanel(
             .joinToString("") + "Url"
 
     private companion object {
+        private const val SET_ADDRESS = "Set address…"
+        private val PLACEHOLDER = Regex("""\$\{[^}]*}""")
         const val DEFAULT = "(default)"
     }
 }

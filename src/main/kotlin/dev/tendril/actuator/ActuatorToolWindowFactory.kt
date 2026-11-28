@@ -77,7 +77,10 @@ internal data class ActuatorNode(
     val children: List<ActuatorNode> = emptyList(),
 )
 
-private class ActuatorPanel(private val project: Project) : JPanel(BorderLayout()), Disposable {
+internal class ActuatorPanel(
+    private val project: Project,
+    private val request: (String, (Result<JsonObject>) -> Unit) -> Unit = ::requestActuator,
+) : JPanel(BorderLayout()), Disposable {
     private val url = SearchTextField(false).apply {
         toolTipText = "Actuator base URL (management.endpoints.web.base-path)"
         textEditor.emptyText.text = "Actuator address, for example http://localhost:8080/actuator"
@@ -118,6 +121,15 @@ private class ActuatorPanel(private val project: Project) : JPanel(BorderLayout(
         add(top, BorderLayout.NORTH)
         views.forEach { tabs.add(it.title, it.component) }
         add(tabs.component, BorderLayout.CENTER)
+        url.addDocumentListener(object : com.intellij.ui.DocumentAdapter() {
+            override fun textChanged(e: DocumentEvent) {
+                views.forEach {
+                    it.generation++
+                    it.loaded = false
+                    it.setMessage("Press Enter to load this address")
+                }
+            }
+        })
         url.textEditor.addActionListener { refreshAll() }
         tabs.onSelect { views[tabs.selectedIndex].let { if (!it.loaded) fetch(it) } }
         views.forEach { it.onNavigate = ::navigateToClass }
@@ -131,42 +143,32 @@ private class ActuatorPanel(private val project: Project) : JPanel(BorderLayout(
         views[0].setMessage("Not loaded yet", canRetry = true)
     }
 
-    override fun dispose() {}
+    private var disposed = false
+
+    override fun dispose() { disposed = true }
 
     fun refreshAll() {
-        views.forEach { it.loaded = false }
+        views.forEach { it.generation++; it.loaded = false }
         fetch(views[tabs.selectedIndex])
     }
 
     private fun fetch(view: ActuatorView) {
         val base = url.text.trim().trimEnd('/')
+        val generation = ++view.generation
         if (base.isEmpty()) {
             view.setMessage("Address unknown", canRetry = true)
             return
         }
         view.setMessage("Loading…")
-        ApplicationManager.getApplication().executeOnPooledThread {
-            val result = runCatching { get("$base/${view.path}") }
-            ApplicationManager.getApplication().invokeLater({
+        request("$base/${view.path}") { result ->
+            if (view.generation == generation && !disposed) {
                 view.loaded = true
                 result.fold(
                     { view.show(it) },
                     { view.setMessage(describe(it, base), canRetry = true) },
                 )
-            }, ModalityState.any())
+            }
         }
-    }
-
-    private fun get(address: String): JsonObject {
-        val client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build()
-        val request = HttpRequest.newBuilder(URI.create(address))
-            .timeout(Duration.ofSeconds(15))
-            .header("Accept", "application/vnd.spring-boot.actuator.v3+json, application/json")
-            .GET().build()
-        val response = client.send(request, HttpResponse.BodyHandlers.ofString())
-        // /health answers 503 when DOWN but still carries the JSON we want to show
-        if (response.statusCode() != 200 && response.statusCode() != 503) throw HttpStatus(response.statusCode())
-        return JsonParser.parseString(response.body()).asJsonObject
     }
 
     private fun loggerAction(text: String, logger: String, level: String?): AnAction =
@@ -190,7 +192,7 @@ private class ActuatorPanel(private val project: Project) : JPanel(BorderLayout(
                 if (status !in 200..299) throw HttpStatus(status)
             }
             ApplicationManager.getApplication().invokeLater({
-                result.onSuccess { fetch(loggersView) }.onFailure {
+                result.onSuccess { if (base == url.text.trim().trimEnd('/')) fetch(loggersView) }.onFailure {
                     NotificationGroupManager.getInstance().getNotificationGroup("Tendril")
                         ?.createNotification(
                             "Could not change the level of $logger: ${it.message}. " +
@@ -201,8 +203,6 @@ private class ActuatorPanel(private val project: Project) : JPanel(BorderLayout(
             }, ModalityState.any())
         }
     }
-
-    private class HttpStatus(val code: Int) : RuntimeException("HTTP $code")
 
     private fun describe(error: Throwable, base: String): String = when {
         error is HttpStatus && error.code == 404 -> "Endpoint not exposed"
@@ -221,11 +221,33 @@ private class ActuatorPanel(private val project: Project) : JPanel(BorderLayout(
 
 }
 
+private class HttpStatus(val code: Int) : RuntimeException("HTTP $code")
+
+private fun requestActuator(address: String, complete: (Result<JsonObject>) -> Unit) {
+    ApplicationManager.getApplication().executeOnPooledThread {
+        val result = runCatching { getActuator(address) }
+        ApplicationManager.getApplication().invokeLater({ complete(result) }, ModalityState.any())
+    }
+}
+
+private fun getActuator(address: String): JsonObject {
+    val client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build()
+    val request = HttpRequest.newBuilder(URI.create(address))
+        .timeout(Duration.ofSeconds(15))
+        .header("Accept", "application/vnd.spring-boot.actuator.v3+json, application/json")
+        .GET().build()
+    val response = client.send(request, HttpResponse.BodyHandlers.ofString())
+    // /health answers 503 when DOWN but still carries the JSON we want to show
+    if (response.statusCode() != 200 && response.statusCode() != 503) throw HttpStatus(response.statusCode())
+    return JsonParser.parseString(response.body()).asJsonObject
+}
+
 private class ActuatorView(
     val title: String,
     val path: String,
     private val parse: (JsonObject) -> List<ActuatorNode>,
 ) {
+    var generation = 0L
     var loaded = false
     var onNavigate: (String) -> Unit = {}
 

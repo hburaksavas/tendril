@@ -4,6 +4,10 @@ import com.intellij.openapi.util.IconLoader
 import javax.swing.Icon
 
 object TendrilIcons {
+    val Incoming = IconLoader.getIcon("/icons/incoming.svg", TendrilIcons::class.java)
+    val Outgoing = IconLoader.getIcon("/icons/outgoing.svg", TendrilIcons::class.java)
+    val ClearRecordings = IconLoader.getIcon("/icons/clearRecordings.svg", TendrilIcons::class.java)
+
     /** Green leaf with a blue arrow: config key -> Java code that uses it. */
     @JvmField
     val ConfigToCode: Icon = IconLoader.getIcon("/icons/configToCode.svg", TendrilIcons::class.java)

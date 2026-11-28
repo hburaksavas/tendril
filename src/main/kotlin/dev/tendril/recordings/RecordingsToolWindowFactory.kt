@@ -1,5 +1,6 @@
 package dev.tendril.recordings
 
+import dev.tendril.TendrilIcons
 import com.intellij.icons.AllIcons
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
@@ -84,16 +85,16 @@ internal class RecordingsPanel(private val project: Project) : JPanel(BorderLayo
     private val status = SimpleColoredComponent()
     private val tabs = dev.tendril.ui.TabStrip(project, this)
     private val panes = mapOf(
-        RecordingKind.INCOMING to RecordingPane(project, RecordingKind.INCOMING, this, ::copyArgument),
-        RecordingKind.OUTGOING to RecordingPane(project, RecordingKind.OUTGOING, this, ::copyArgument),
-        RecordingKind.MESSAGE to RecordingPane(project, RecordingKind.MESSAGE, this, ::copyArgument),
+        RecordingKind.INCOMING to RecordingPane(project, RecordingKind.INCOMING, this, onSetup = ::copyArgument),
+        RecordingKind.OUTGOING to RecordingPane(project, RecordingKind.OUTGOING, this, onSetup = ::copyArgument),
+        RecordingKind.MESSAGE to RecordingPane(project, RecordingKind.MESSAGE, this, onSetup = ::copyArgument),
     )
 
     init {
-        tabs.addIconTab(AllIcons.Actions.Download, "Incoming requests", panes.getValue(RecordingKind.INCOMING))
-        tabs.addIconTab(AllIcons.Actions.Upload, "Outgoing calls", panes.getValue(RecordingKind.OUTGOING))
-        tabs.addIconTab(AllIcons.Toolwindows.ToolWindowMessages, "Messages", panes.getValue(RecordingKind.MESSAGE))
-        tabs.addIconTab(AllIcons.FileTypes.Json, "Mocks: responses the recorder gives instead of a Feign call or a controller", dev.tendril.mocks.MocksPane(project, this))
+        tabs.addIconTab("Incoming", TendrilIcons.Incoming, "Incoming requests", panes.getValue(RecordingKind.INCOMING))
+        tabs.addIconTab("Outgoing", TendrilIcons.Outgoing, "Outgoing calls", panes.getValue(RecordingKind.OUTGOING))
+        tabs.addIconTab("Messages", AllIcons.Toolwindows.ToolWindowMessages, "Messages", panes.getValue(RecordingKind.MESSAGE))
+        tabs.addIconTab("Mocks", AllIcons.FileTypes.Json, "Mocks: responses the recorder gives instead of a Feign call or a controller", dev.tendril.mocks.MocksPane(project, this))
 
         val top = JPanel(BorderLayout()).apply {
             border = dev.tendril.ui.Chrome.topRow()
@@ -110,8 +111,8 @@ internal class RecordingsPanel(private val project: Project) : JPanel(BorderLayo
                         DumbAware {
                         override fun actionPerformed(e: AnActionEvent) = copyArgument()
                     },
-                    object : AnAction("Clear", "Remove all recordings", AllIcons.Actions.GC), DumbAware {
-                        override fun actionPerformed(e: AnActionEvent) = store.clear()
+                    object : AnAction("Clear all recordings…", "Remove all recordings", TendrilIcons.ClearRecordings), DumbAware {
+                        override fun actionPerformed(e: AnActionEvent) = confirmClear()
                     },
                 ),
                 BorderLayout.WEST,
@@ -129,6 +130,14 @@ internal class RecordingsPanel(private val project: Project) : JPanel(BorderLayo
     }
 
     override fun dispose() {}
+
+    private fun confirmClear() {
+        val snapshot = store.snapshotAll()
+        val counts = RecordingKind.entries.joinToString("\n") { "${TITLES.getValue(it)}: ${snapshot.getValue(it).size}" }
+        val choice = Messages.showOkCancelDialog(project, counts, "Clear all recordings?",
+            "Clear recordings", "Cancel", Messages.getWarningIcon())
+        if (choice == Messages.OK) store.clear(snapshot)
+    }
 
     fun showRoute(endpoint: Endpoint) {
         val pane = panes.getValue(RecordingKind.INCOMING)
@@ -198,10 +207,15 @@ internal class RecordingsPanel(private val project: Project) : JPanel(BorderLayo
 /** A list of the latest recordings of one kind, and the details of the selected one. */
 internal class RecordingPane(
     private val project: Project, private val kind: RecordingKind, parent: com.intellij.openapi.Disposable = project,
+    private val sendReplay: (Recording, (String) -> Unit) -> Unit = { recording, complete ->
+        replayInBackground(project, recording, complete)
+    },
     private val onSetup: () -> Unit = {},
 ) : JPanel(BorderLayout()) {
     private val model = DefaultListModel<Recording>()
     private val list = object : JBList<Recording>(model) {
+        override fun getScrollableTracksViewportWidth() = true
+
         /** Clicking below the last row would otherwise select the last recording. */
         override fun locationToIndex(location: java.awt.Point): Int {
             val index = super.locationToIndex(location)
@@ -211,6 +225,8 @@ internal class RecordingPane(
     }
     private var shown: List<Recording> = emptyList()
     private var shownRecording: Recording? = null
+    private val replayResults = mutableMapOf<Recording, String>()
+    private val replaying = mutableSetOf<Recording>()
     private var shownOnce = false
     private var rebuilding = false
     private var route: Endpoint? = null
@@ -249,7 +265,7 @@ internal class RecordingPane(
     private val sql = Editors.viewer(project)
     private val details = dev.tendril.ui.TabStrip(project, parent)
     private val timeline = WaterfallPanel()
-    private val replayButton = ActionLink(if (kind == RecordingKind.MESSAGE) "Republish" else if (kind == RecordingKind.OUTGOING) "Send again" else "Replay").apply { icon = AllIcons.Actions.Execute }
+    private val replayButton = ActionLink(if (kind == RecordingKind.MESSAGE) "Republish" else if (kind == RecordingKind.OUTGOING) "Send again" else "Replay request").apply { icon = AllIcons.Actions.Execute }
     private val openButton = ActionLink("Open as .http").apply { icon = AllIcons.Actions.EditSource }
     private val sourceButton = ActionLink("Go to Controller").apply { isVisible = false }
     private val testButton = ActionLink("Generate Test").apply {
@@ -265,7 +281,7 @@ internal class RecordingPane(
 
     init {
         list.font = list.font.deriveFont(java.awt.Font.PLAIN)
-        list.cellRenderer = renderer
+        list.cellRenderer = if (kind == RecordingKind.MESSAGE) renderer else HttpRecordingRenderer()
         updateEmptyText()
         errorsOnly.addItemListener { refreshList() }
         pathSearch.addDocumentListener(object : DocumentAdapter() {
@@ -281,7 +297,7 @@ internal class RecordingPane(
             details.add("Request", dev.tendril.ui.Sections.stacked("$sections.request", "Headers", requestHeaders, "Body", request))
             details.add("Response", dev.tendril.ui.Sections.stacked("$sections.response", "Headers", responseHeaders, "Body", response))
         }
-        details.add("Replay", replay)
+        details.add("Replay result", replay)
         // where the time of a served request went: the calls made while serving it, on one axis
         if (kind == RecordingKind.INCOMING) {
             details.add("Timeline", ScrollPaneFactory.createScrollPane(timeline, true))
@@ -295,14 +311,50 @@ internal class RecordingPane(
         mockButton.isVisible = kind != RecordingKind.MESSAGE
         testButton.addActionListener { generateTest(parent) }
         openButton.isVisible = kind != RecordingKind.MESSAGE
-        val actions = JPanel(FlowLayout(FlowLayout.LEFT, 14, 0)).apply {
+        val extras = listOf(mockButton, testButton).filter { it.isVisible }
+        val more = ActionLink("More actions").apply {
+            addActionListener {
+                val menu = javax.swing.JPopupMenu()
+                extras.forEach { link ->
+                    menu.add(javax.swing.JMenuItem(link.text, link.icon).apply {
+                        isEnabled = link.isEnabled
+                        addActionListener { link.doClick() }
+                    })
+                }
+                menu.show(this, 0, height)
+            }
+        }
+        val actions = object : JPanel(FlowLayout(FlowLayout.LEFT, JBUI.scale(6), 0)) {
+            override fun doLayout() {
+                val links = listOf(replayButton, openButton, sourceButton).filter { it.isVisible } + extras
+                val natural = links.sumOf { it.preferredSize.width } + (links.size + 1) * (layout as FlowLayout).hgap
+                val collapse = extras.isNotEmpty() && width < natural
+                extras.forEach { it.isVisible = !collapse }
+                more.isVisible = collapse
+                super.doLayout()
+            }
+
+            override fun getPreferredSize(): java.awt.Dimension {
+                val size = super.getPreferredSize()
+                if (width <= 0) return size
+                val flow = layout as FlowLayout
+                var used = flow.hgap
+                var lines = 1
+                components.filter { it.isVisible }.forEach {
+                    val next = it.preferredSize.width + flow.hgap
+                    if (used > flow.hgap && used + next > width) { lines++; used = flow.hgap }
+                    used += next
+                }
+                return java.awt.Dimension(size.width, insets.top + insets.bottom +
+                    lines * replayButton.preferredSize.height)
+            }
+        }.apply {
             isOpaque = false
             add(replayButton)
             add(openButton)
             add(sourceButton)
-            add(mockButton)
-            add(testButton)
-            add(hint.apply { foreground = JBColor.GRAY })
+            extras.forEach(::add)
+            add(more.apply { isVisible = false })
         }
         val titles = JPanel(BorderLayout()).apply {
             isOpaque = false
@@ -312,9 +364,11 @@ internal class RecordingPane(
         val header = JPanel(BorderLayout()).apply {
             border = JBUI.Borders.empty(10, 12, 6, 12)
             add(titles, BorderLayout.NORTH)
-            add(actions.apply { border = JBUI.Borders.emptyTop(6) }, BorderLayout.SOUTH)
+            add(actions.apply { border = JBUI.Borders.emptyTop(6) }, BorderLayout.CENTER)
+            add(hint.apply { foreground = JBColor.GRAY }, BorderLayout.SOUTH)
         }
         val right = JPanel(BorderLayout()).apply {
+            minimumSize = java.awt.Dimension(0, 0)
             add(header, BorderLayout.NORTH)
             add(details.component, BorderLayout.CENTER)
         }
@@ -331,7 +385,12 @@ internal class RecordingPane(
                     }, BorderLayout.SOUTH)
                 }, BorderLayout.NORTH)
             }
-            add(ScrollPaneFactory.createScrollPane(list, true), BorderLayout.CENTER)
+            val scroll = ScrollPaneFactory.createScrollPane(list, true)
+            scroll.viewport.addChangeListener {
+                val width = scroll.viewport.extentSize.width
+                if (width > 0 && width != list.fixedCellWidth) list.fixedCellWidth = width
+            }
+            add(scroll, BorderLayout.CENTER)
         }
         splitter.secondComponent = right
         add(splitter, BorderLayout.CENTER)
@@ -348,6 +407,7 @@ internal class RecordingPane(
         } else {
             pendingRecordings.clear()
         }
+        replayResults.keys.retainAll(recordings.toSet())
         shown = recordings
         refreshList()
     }
@@ -374,8 +434,10 @@ internal class RecordingPane(
         }
         updateEmptyText()
         val selected = list.selectedValue
-        renderer.painter.font = list.font
-        renderer.painter.badgeWidth = renderer.painter.badgeColumn(recordings.map { badgeOf(it) } + "DELETE")
+        if (kind == RecordingKind.MESSAGE) {
+            renderer.painter.font = list.font
+            renderer.painter.badgeWidth = renderer.painter.badgeColumn(recordings.map { it.transport.orEmpty().uppercase() })
+        }
         rebuilding = true
         try {
             model.clear()
@@ -394,32 +456,18 @@ internal class RecordingPane(
         newRecordings.isVisible = count > 0
     }
 
-    private fun badgeOf(r: Recording) = if (kind == RecordingKind.MESSAGE) (r.transport ?: "message").uppercase() else r.method ?: "GET"
-
-    private fun primaryOf(r: Recording): List<Fragment> =
-        if (kind == RecordingKind.MESSAGE) {
-            listOfNotNull(
-                Fragment(r.destination.orEmpty()),
-                r.routingKey?.takeIf { it.isNotEmpty() && it != r.destination }?.let { Fragment("  $it", Palette.MUTED) },
-            )
-        } else Palette.path(RecordingText.shortUrl(r, kind))
-
     private fun bindRow(p: RowPainter, r: Recording) {
-        p.badge = badgeOf(r)
-        p.badgeColor = if (kind == RecordingKind.MESSAGE) Palette.messageTransport(r.transport) else Palette.method(r.method)
-        p.primary = primaryOf(r).map { Fragment(it.text, it.color, bold = p.selected) }
+        p.badge = (r.transport ?: "message").uppercase()
+        p.badgeColor = Palette.messageTransport(r.transport)
+        p.primary = listOfNotNull(
+            Fragment(r.destination.orEmpty(), bold = p.selected),
+            r.routingKey?.takeIf { it.isNotEmpty() && it != r.destination }?.let { Fragment("  $it", Palette.MUTED) },
+        )
         p.secondary = buildList {
-            when {
-                r.status != null -> add(Fragment("${r.status}", Palette.status(r.status), bold = true))
-                r.error != null -> add(Fragment("failed", Palette.FAILED, bold = true))
-            }
-            if (kind == RecordingKind.MESSAGE) {
-                if (r.durationMs > 0) add(Fragment("   ${r.durationMs} ms", Palette.MUTED))
-                add(Fragment("   ${RecordingText.TIME.format(Date(r.time))}", Palette.MUTED))
-            } else {
-                if (r.mock != null) add(Fragment("   mocked", Palette.VARIABLE, bold = true))
-                add(Fragment("   ${r.durationMs} ms", Palette.MUTED))
-            }
+            if (r.status != null) add(Fragment("${r.status}", Palette.status(r.status), bold = true))
+            else if (r.error != null) add(Fragment("failed", Palette.FAILED, bold = true))
+            if (r.durationMs > 0) add(Fragment("   ${r.durationMs} ms", Palette.MUTED))
+            add(Fragment("   ${RecordingText.TIME.format(Date(r.time))}", Palette.MUTED))
         }
     }
 
@@ -450,12 +498,13 @@ internal class RecordingPane(
         if (shownOnce && r === shownRecording) return // same recording: keep the scroll position of the editors
         shownOnce = true
         shownRecording = r
-        replayButton.isEnabled = r != null && canReplay(r)
+        replayButton.isEnabled = r != null && r !in replaying && canReplay(r)
         openButton.isEnabled = r != null
         sourceButton.isVisible = kind == RecordingKind.INCOMING && r?.let { it.handler != null || it.pattern != null } == true
         mockButton.isEnabled = r != null && r.mock == null && dev.tendril.mocks.MockFactory.fromRecording(r) != null
         testButton.isEnabled = r != null && r.status != null
         hint.text = if (r != null && !canReplay(r)) cannotReplay(r) else " "
+        hint.isVisible = hint.text.isNotBlank()
         summary.clear()
         facts.clear()
         if (r == null) {
@@ -472,9 +521,11 @@ internal class RecordingPane(
                     facts.append("  ·  ", SimpleTextAttributes.GRAYED_ATTRIBUTES)
                 }
             }
+            if (kind != RecordingKind.MESSAGE || r.durationMs > 0) {
+                facts.append("${r.durationMs} ms   ", SimpleTextAttributes.REGULAR_ATTRIBUTES)
+            }
             val line = listOfNotNull(
                 r.mock?.let { "answered by the mock $it" },
-                r.durationMs.takeIf { kind != RecordingKind.MESSAGE || it > 0 }?.let { "$it ms" },
                 r.handler?.let { "handled by $it" }, r.client?.let { "client $it" },
                 r.flow.takeIf { it > 0 }?.let { "flow $it" },
                 RecordingText.TIME.format(Date(r.time)),
@@ -490,7 +541,7 @@ internal class RecordingPane(
         val body = r?.let { RecordingText.response(it) }.orEmpty()
         Editors.show(response, body, Editors.typeOf(body))
         Editors.show(responseHeaders, r?.let { RecordingText.responseHeaders(it) }.orEmpty(), PlainTextFileType.INSTANCE)
-        Editors.show(replay, "", PlainTextFileType.INSTANCE)
+        Editors.show(replay, if (r in replaying) "Sending…" else replayResults[r].orEmpty(), PlainTextFileType.INSTANCE)
         if (kind == RecordingKind.INCOMING) {
             timeline.show(r?.let { Waterfall.build(it, RecordingStore.getInstance(project).snapshot(RecordingKind.OUTGOING)) }.orEmpty())
             val queries = r?.sql.orEmpty()
@@ -548,20 +599,17 @@ internal class RecordingPane(
     private fun replaySelected() {
         val r = list.selectedValue ?: return
         if (kind != RecordingKind.MESSAGE && !confirmTarget(r)) return
+        if (!replaying.add(r)) return
         details.select(replay)
         Editors.show(replay, "Sending…", PlainTextFileType.INSTANCE)
         replayButton.isEnabled = false
-        ApplicationManager.getApplication().executeOnPooledThread {
-            val text = if (kind == RecordingKind.MESSAGE) {
-                RecorderServer.getInstance().republish(project, r).fold({ it }, { "Failed: ${it.message}" })
-            } else {
-                runCatching { HttpExecutor.send(RecordingText.asRequest(r)) }
-                    .fold({ RecordingText.comparison(r, it) }, { "The request failed: ${it.message ?: it.javaClass.simpleName}" })
-            }
-            ApplicationManager.getApplication().invokeLater({
+        sendReplay(r) { text ->
+            replaying.remove(r)
+            if (r in shown) replayResults[r] = text
+            if (list.selectedValue === r) {
                 Editors.show(replay, text, PlainTextFileType.INSTANCE)
-                replayButton.isEnabled = true
-            }, ModalityState.any())
+                replayButton.isEnabled = canReplay(r)
+            }
         }
     }
 
@@ -572,6 +620,18 @@ internal class RecordingPane(
         return Messages.showYesNoDialog(
             project, "This sends a real ${r.method} request to $host. Continue?", "Replay request", Messages.getWarningIcon(),
         ) == Messages.YES
+    }
+}
+
+private fun replayInBackground(project: Project, recording: Recording, complete: (String) -> Unit) {
+    ApplicationManager.getApplication().executeOnPooledThread {
+        val text = if (recording.kind == RecordingKind.MESSAGE) {
+            RecorderServer.getInstance().republish(project, recording).fold({ it }, { "Failed: ${it.message}" })
+        } else {
+            runCatching { HttpExecutor.send(RecordingText.asRequest(recording)) }
+                .fold({ RecordingText.comparison(recording, it) }, { "The request failed: ${it.message ?: it.javaClass.simpleName}" })
+        }
+        ApplicationManager.getApplication().invokeLater({ complete(text) }, ModalityState.any(), project.disposed)
     }
 }
 

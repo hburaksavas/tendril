@@ -22,9 +22,8 @@ internal class TabStrip(project: com.intellij.openapi.project.Project, parent: c
         tabs.addTab(info)
     }
 
-    /** A tab that shows only [icon]; the name (and whatever [setTooltip] adds later) is the tooltip. */
-    fun addIconTab(icon: javax.swing.Icon, tooltip: String, content: javax.swing.JComponent) {
-        val info = com.intellij.ui.tabs.TabInfo(content).setIcon(icon).setTooltipText(tooltip)
+    fun addIconTab(title: String, icon: javax.swing.Icon, tooltip: String, content: javax.swing.JComponent) {
+        val info = com.intellij.ui.tabs.TabInfo(content).setText(title).setIcon(icon).setTooltipText(tooltip)
         infos += info
         tabs.addTab(info)
     }

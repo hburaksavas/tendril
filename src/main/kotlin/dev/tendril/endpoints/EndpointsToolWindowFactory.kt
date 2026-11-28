@@ -1,5 +1,6 @@
 package dev.tendril.endpoints
 
+import dev.tendril.TendrilIcons
 import com.intellij.icons.AllIcons
 import com.intellij.ide.util.PropertiesComponent
 import com.intellij.notification.NotificationGroupManager
@@ -78,8 +79,8 @@ internal class ApiRootPanel(private val project: Project) : JPanel(BorderLayout(
     private val outgoing = FeignPanel(project, this) { tabs.setTooltip(1, "Outgoing Feign calls: $it") }
 
     init {
-        tabs.addIconTab(AllIcons.Actions.Download, "Incoming endpoints", incoming)
-        tabs.addIconTab(AllIcons.Actions.Upload, "Outgoing Feign calls", outgoing)
+        tabs.addIconTab("Incoming", TendrilIcons.Incoming, "Incoming endpoints", incoming)
+        tabs.addIconTab("Outgoing", TendrilIcons.Outgoing, "Outgoing Feign calls", outgoing)
         add(tabs.component, BorderLayout.CENTER)
         Disposer.register(this, incoming)
         Disposer.register(this, outgoing)
@@ -268,7 +269,7 @@ internal class EndpointsPanel(
                 p.badge = item.httpMethod
                 p.badgeColor = Palette.method(item.httpMethod)
                 p.primary = Palette.path(item.path)
-                p.secondary = listOf(Fragment("${item.className}.${item.methodName}", Palette.MUTED))
+                p.secondary = listOf(Fragment(item.methodName, Palette.MUTED))
             }
             is String -> {
                 p.icon = AllIcons.Nodes.Class

@@ -74,22 +74,14 @@ class TendrilConfigurable(private val project: Project) : SearchableConfigurable
                 row { cell(ignoredKeysPanel()).align(Align.FILL) }
             }
             group("Feign clients") {
-                row {
-                    comment(
-                        "Base URLs for clients that only declare a name, such as @FeignClient(\"credit-service\"). " +
-                            "They are used when the client has no url of its own and win over the config files.",
-                    )
-                }
+                row { label("Client addresses") }
                 row { cell(addressPanel()).align(Align.FILL) }
-                row {
-                    comment(
-                        "More config keys that can hold the address of a name-only client, tried before the built-in ones. " +
-                            "Write {name} where the service name goes, for example <code>urls.{name}.base</code>.",
-                    )
-                }
+                row { comment("Base URLs for name-only clients take precedence over configuration files.") }
+                row { label("Additional address patterns") }
                 row { cell(templatePanel()).align(Align.FILL) }
-                row {
-                    comment("Built in: " + FeignResolver.NAME_KEYS.joinToString("  ") { "<code>$it</code>" })
+                row { comment("Use {name} for the client name, for example <code>urls.{name}.base</code>.") }
+                collapsibleGroup("Show built-in patterns") {
+                    FeignResolver.NAME_KEYS.forEach { key -> row { comment("<code>$key</code>") } }
                 }
             }
             group("Service calls") {

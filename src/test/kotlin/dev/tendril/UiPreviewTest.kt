@@ -138,6 +138,21 @@ class UiPreviewTest : SpringTestCase() {
         )
         UiSnapshot.save(incomingPane, "recordings-incoming", 900, 380)
 
+        UiSnapshot.save(incomingPane, "recordings-incoming-narrow", 650, 380)
+
+        val outgoingPane = RecordingPane(project, RecordingKind.OUTGOING)
+        val records = listOf(
+            Triple("inventory.test.local", 503, 81), Triple("mirror.test.local", 200, 42),
+            Triple("inventory.test.local", 200, 9),
+        ).mapIndexed { index, (host, status, duration) ->
+            rec("kind" to "http_out", "time" to 1795214823000L - index * 1000L, "method" to "GET",
+                "url" to "https://$host/api/warehouse/catalog/availability/stock/sku-9",
+                "status" to status, "durationMs" to duration)
+        }
+        outgoingPane.show(records)
+        UiSnapshot.save(outgoingPane, "recordings-outgoing-narrow", 900, 380)
+        UiSnapshot.save(outgoingPane, "recordings-outgoing-wide", 2000, 380)
+
         val messagePane = RecordingPane(project, RecordingKind.MESSAGE)
         messagePane.show(
             listOf(

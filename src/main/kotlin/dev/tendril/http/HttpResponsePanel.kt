@@ -164,7 +164,8 @@ internal class HttpResponsePanel(private val project: Project) : JPanel(BorderLa
         }
         status.clear()
         status.append("${r.status} ${HttpExecutor.reason(r.status)}".trim(), SimpleTextAttributes(SimpleTextAttributes.STYLE_BOLD, color))
-        status.append("   ${r.millis} ms   ${size(r.bytes)}", SimpleTextAttributes.GRAYED_ATTRIBUTES)
+        status.append("   ${r.millis} ms", SimpleTextAttributes.REGULAR_ATTRIBUTES)
+        status.append("   ${size(r.bytes)}", SimpleTextAttributes.GRAYED_ATTRIBUTES)
         val pretty = HttpExecutor.pretty(r.body).take(MAX_BODY)
         Editors.show(body, pretty, Editors.typeOf(pretty))
         Editors.show(headers, r.headers.joinToString("\n") { "${it.first}: ${it.second}" }, PlainTextFileType.INSTANCE)

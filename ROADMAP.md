@@ -3,6 +3,26 @@
 Tendril adds Spring Boot tooling to IntelliJ IDEA without an Ultimate subscription.
 Target: IntelliJ IDEA 2025.3+ (unified distribution). Stack: Kotlin, IntelliJ Platform Gradle Plugin 2.x.
 
+## Completed UX improvements
+
+- [x] Keep each replay result with its recording. If the user replays A and selects B before A finishes, B keeps its own details and returning to A shows A's result.
+- [x] Bind Actuator responses to the target address and the latest refresh for each view. When switching from A to B, a late success or error from A must never replace B's data or loading state.
+- [x] Rename the Recordings toolbar action to “Clear all recordings…” and show the incoming, outgoing and message counts before clearing. Cancelling preserves every recording.
+
+### Visual improvements (in priority order)
+
+- [x] Recordings actions. Label the incoming HTTP action “Replay request” with a play icon and its output tab “Replay result”. Keep “Open as .http” and “Go to Controller” visible when available. In narrow panels, move “Mock This Response” and “Generate Test” into “More actions”.
+- [x] HTTP response and recording summaries. Use a consistent layout with the status followed by the duration, both readable at normal text contrast. Give the response size, handler and timestamp secondary emphasis where present.
+- [x] Endpoints → Outgoing. Group calls by Feign client. Show the client name and target address for the selected profile in the group header, with the HTTP method, route and method name on each call row. Omit configuration keys, unresolved placeholders and resolution-source text throughout the list, including on selection. For an unresolved target, show “No address” and a keyboard-accessible “Set address…” action that opens that client's address editor.
+- [x] Feign settings. Label the editable fields “Client addresses” and “Additional address patterns”. Keep one pattern example visible and put the full list under an expandable “Show built-in patterns” control.
+
+### Incoming and Outgoing list layouts
+
+- [x] Endpoints → Incoming. Keep one row per endpoint, grouped under the controller name and endpoint count. Align HTTP method, route and handler method in columns. Show only the method name in the handler column since the group already identifies the controller.
+- [x] HTTP recordings. Use one row when the content fits. In a narrow list, put the HTTP method and route on the first line with the status code or “Failed” aligned at the right edge. Keep the “mocked” marker beside the result when applicable. Shorten long routes in the middle so the final segment stays visible.
+- [x] In the compact two-line layout, show the handler for Incoming or the actual destination host for Outgoing on the second line, alongside the timestamp and duration. Use the same fields in the wide layout.
+- [x] Prototype Recordings → Outgoing first. At narrow and wide list widths, check that calls to the same path on different hosts and repeated calls to the same host with different outcomes can be distinguished by target, time and result directly in the list.
+
 ## Done (v0.1)
 - [x] Property key + value completion in `application*.properties` / `.yml` (from `spring-configuration-metadata.json`, booleans, enums, hints)
 - [x] Unknown-property inspection with a project ignore list (`.idea/…xml`) and Alt+Enter quick fixes

@@ -136,8 +136,14 @@ class RecordingStore(val project: Project) : Disposable {
 
     fun snapshot(kind: RecordingKind): List<Recording> = synchronized(lists) { lists.getValue(kind).toList() }
 
-    fun clear() {
-        synchronized(lists) { lists.values.forEach { it.clear() } }
+    fun snapshotAll(): Map<RecordingKind, List<Recording>> = synchronized(lists) { lists.mapValues { it.value.toList() } }
+
+    fun clear() = clear(snapshotAll())
+
+    fun clear(snapshot: Map<RecordingKind, List<Recording>>) {
+        synchronized(lists) {
+            snapshot.forEach { (kind, confirmed) -> lists.getValue(kind).removeAll(confirmed.toSet()) }
+        }
         listeners.forEach { it() }
     }
 

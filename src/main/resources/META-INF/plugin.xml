@@ -107,10 +107,12 @@
                                         implementationClass="dev.tendril.feign.FeignLineMarkerProvider"/>
         <codeInsight.lineMarkerProvider language="JAVA"
                                         implementationClass="dev.tendril.feign.FeignLineMarkerProvider"/>
-        <toolWindow id="HTTP Response" anchor="bottom" icon="/icons/endpoints.svg"
+        <toolWindow id="HTTP Response" anchor="bottom" icon="/icons/httpResponse.svg"
                     factoryClass="dev.tendril.http.HttpResponseToolWindowFactory"/>
         <toolWindow id="Spring Actuator" anchor="right" icon="/icons/actuator.svg"
                     factoryClass="dev.tendril.actuator.ActuatorToolWindowFactory"/>
+        <toolWindow id="Batch Jobs" anchor="right"
+                    factoryClass="dev.tendril.batch.BatchJobsToolWindowFactory"/>
 
         <runConfigurationExtension implementation="dev.tendril.recordings.run.RecorderRunConfigurationExtension"/>
 

@@ -58,6 +58,21 @@ class RecordingStoreTest : BasePlatformTestCase() {
         assertTrue(RecordingKind.entries.all { store.snapshot(it).isEmpty() })
     }
 
+    fun `test clear only removes recordings counted in the confirmation`() {
+        val store = RecordingStore(project)
+        store.add(http(1))
+        store.add(http(2, "http_out"))
+        store.add(message(3))
+        val confirmed = store.snapshotAll()
+        assertEquals(listOf(1, 1, 1), RecordingKind.entries.map { confirmed.getValue(it).size })
+        val newMessage = message(4)
+        store.add(newMessage)
+        store.clear(confirmed)
+        assertEmpty(store.snapshot(RecordingKind.INCOMING))
+        assertEmpty(store.snapshot(RecordingKind.OUTGOING))
+        assertEquals(listOf(newMessage), store.snapshot(RecordingKind.MESSAGE))
+    }
+
     fun `test listeners hear about additions and contact`() {
         val store = RecordingStore(project)
         var calls = 0
