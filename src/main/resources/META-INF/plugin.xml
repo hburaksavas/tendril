@@ -111,7 +111,7 @@
                     factoryClass="dev.tendril.http.HttpResponseToolWindowFactory"/>
         <toolWindow id="Spring Actuator" anchor="right" icon="/icons/actuator.svg"
                     factoryClass="dev.tendril.actuator.ActuatorToolWindowFactory"/>
-        <toolWindow id="Batch Jobs" anchor="right"
+        <toolWindow id="Batch Jobs" anchor="right" icon="/icons/batchJobs.svg"
                     factoryClass="dev.tendril.batch.BatchJobsToolWindowFactory"/>
 
         <runConfigurationExtension implementation="dev.tendril.recordings.run.RecorderRunConfigurationExtension"/>
