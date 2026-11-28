@@ -4,6 +4,27 @@ All notable changes to Tendril. The section of the version being built becomes t
 
 ## [Unreleased]
 
+## [0.10.0]
+
+### Batch Jobs
+- New Batch Jobs tool window, shown in projects that use Spring Batch: every `Job` bean with the steps it runs (`start`, `next`, `from`, `to`), each step with its reader, processor, writer or tasklet, and the steps no job links to. Enter or a double-click goes to the declaration
+
+### Recordings
+- HTTP recordings take one row when they fit: method, route, status (or "Failed") and "mocked", the handler (incoming) or the destination host (outgoing), time and duration. In a narrow list they wrap to two lines, and long routes are shortened in the middle so the last segment stays visible
+- A replay result stays with its recording: replaying one and selecting another keeps each one's result, and coming back shows it. The action is now "Replay request" and its tab "Replay result"
+- When the details panel is narrow, "Mock This Response" and "Generate Test" move into "More actions"
+- "Clear all recordings…" asks first and shows how many incoming, outgoing and message recordings will go. Recordings that arrive while the dialog is open are kept
+- Incoming and Outgoing tabs (here and in Endpoints) have names and their own icons
+
+### Endpoints
+- Incoming: the handler column shows only the method name, since the controller is already the group
+- Outgoing: each Feign client shows its name and the address for the selected profile, without configuration keys or unresolved placeholders. A client with no address shows "No address" with a "Set address…" link (or Enter) that opens its address editor
+
+### Other
+- HTTP Response: the duration is shown at normal contrast after the status, and the size is shown in grey. The tool window has its own icon
+- Spring Actuator: a late answer from a previous address or refresh no longer replaces what the current view shows. Editing the address asks for Enter before anything loads
+- Settings: the Feign section has "Client addresses" and "Additional address patterns" labels, and the built-in patterns sit under "Show built-in patterns"
+
 ## [0.9.1]
 
 ### Fixes
