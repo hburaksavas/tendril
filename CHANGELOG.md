@@ -4,6 +4,11 @@ All notable changes to Tendril. The section of the version being built becomes t
 
 ## [Unreleased]
 
+## [0.10.1]
+
+### Fixes
+- The Batch Jobs tool window has its own icon
+
 ## [0.10.0]
 
 ### Batch Jobs
